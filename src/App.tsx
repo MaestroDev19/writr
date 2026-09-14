@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
 import { QueryClientProvider } from "@tanstack/react-query"
 import { queryClient } from "@/lib/query-client"
 import { AuthProvider, useAuth } from "@/contexts/auth-context"
+import { SettingsProvider } from "@/contexts/settings-context"
 import { ProtectedRoute, PublicOnlyRoute } from "@/components/protected-route"
 import { NavigationHeader } from "@/components/app-nav"
 
@@ -12,6 +13,7 @@ import DashboardPage from "@/pages/DashboardPage"
 import GeneratePage from "@/pages/GeneratePage"
 import CritiquePage from "@/pages/CritiquePage"
 import IngestionPage from "@/pages/IngestionPage"
+import SettingsPage from "@/pages/SettingsPage"
 import NotFoundPage from "@/pages/NotFoundPage"
 
 function AppContent() {
@@ -79,6 +81,14 @@ function AppContent() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/settings"
+            element={
+              <ProtectedRoute>
+                <SettingsPage />
+              </ProtectedRoute>
+            }
+          />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </main>
@@ -90,9 +100,11 @@ export function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <BrowserRouter>
-          <AppContent />
-        </BrowserRouter>
+        <SettingsProvider>
+          <BrowserRouter>
+            <AppContent />
+          </BrowserRouter>
+        </SettingsProvider>
       </AuthProvider>
     </QueryClientProvider>
   )

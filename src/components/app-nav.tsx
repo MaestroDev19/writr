@@ -1,3 +1,4 @@
+import * as React from "react"
 import { Link, useLocation, useNavigate } from "react-router-dom"
 import { useAuth } from "@/contexts/auth-context"
 import { useTheme } from "@/components/theme-provider"
@@ -12,6 +13,14 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
 import {
+  Drawer,
+  DrawerTrigger,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerDescription,
+} from "@/components/ui/drawer"
+import {
   Sun,
   Moon,
   User,
@@ -20,9 +29,11 @@ import {
   Search,
   Sparkles,
   MessageSquareQuote,
-  Database,
   LayoutDashboard,
+  Menu,
+  HardDrive,
 } from "lucide-react"
+import { useSettings } from "@/contexts/settings-context"
 
 function getInitials(name?: string | null, email?: string | null): string {
   if (name?.trim()) {
@@ -37,8 +48,10 @@ function getInitials(name?: string | null, email?: string | null): string {
 export function NavigationHeader() {
   const { theme, setTheme } = useTheme()
   const { profile, user, signOut } = useAuth()
+  const { isLocal, activeModelDisplayName } = useSettings()
   const location = useLocation()
   const navigate = useNavigate()
+  const [isDrawerOpen, setIsDrawerOpen] = React.useState(false)
 
   const isActive = (path: string) => location.pathname === path
 
@@ -49,61 +62,72 @@ export function NavigationHeader() {
 
   const navItems = [
     { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-    { label: "Generate", href: "/generate", icon: Sparkles },
-    { label: "Critique", href: "/critique", icon: MessageSquareQuote },
-    { label: "Ingestion", href: "/ingestion", icon: Database },
+    { label: "Generate", href: "/generate", icon: Sparkles, badge: "New idea" },
+    { label: "Critique", href: "/critique", icon: MessageSquareQuote, badge: "Structure" },
   ]
+
+  const handleNavClick = (href: string) => {
+    setIsDrawerOpen(false)
+    navigate(href)
+  }
 
   return (
     <div className="sticky top-0 z-40 w-full">
-      {/* Violet Theme Top Accent Stripe */}
+      {/* NeoBrutalist Violet Top Accent Stripe */}
       <div className="h-0.5 w-full bg-primary" />
 
       <header className="border-b border-border bg-background/95 backdrop-blur-md">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-2.5">
-          {/* Left: Brand + Nav Links */}
-          <div className="flex items-center gap-6 sm:gap-8">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 sm:px-6 py-2.5">
+          {/* Left: Brand + Desktop Nav Links */}
+          <div className="flex items-center gap-6 lg:gap-8">
             {/* Logo and Brand */}
             <Link
               to="/dashboard"
-              className="flex items-center gap-2.5 select-none cursor-pointer group"
+              className="flex items-center gap-2.5 select-none cursor-pointer group focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring rounded-md"
+              aria-label="Writr Dashboard"
             >
               <div className="flex size-7 items-center justify-center rounded-full bg-primary text-primary-foreground font-black text-xs shadow-xs transition-transform group-hover:scale-105">
                 W
               </div>
-              <span className="text-base font-bold tracking-tight text-foreground">
-                Writr
-              </span>
+              <div className="flex flex-col leading-none">
+                <span className="text-base font-bold tracking-tight text-foreground">
+                  Writr
+                </span>
+                <span className="text-[10px] text-muted-foreground hidden sm:block">
+                  Writer Studio
+                </span>
+              </div>
             </Link>
 
-            {/* Navigation links (Dashboard, Generate, Critique, Ingestion) */}
-            <nav className="hidden sm:flex items-center gap-1">
+            {/* Desktop Navigation links */}
+            <nav className="hidden md:flex items-center gap-1" aria-label="Main Navigation">
               {navItems.map((item) => {
                 const active = isActive(item.href)
                 return (
-                  <Link
+                  <button
                     key={item.href}
-                    to={item.href}
-                    className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors select-none ${
+                    type="button"
+                    onClick={() => handleNavClick(item.href)}
+                    className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer select-none focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring ${
                       active
                         ? "bg-primary text-primary-foreground font-semibold shadow-xs"
                         : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                     }`}
                   >
                     <item.icon className="size-3.5" />
-                    {item.label}
-                  </Link>
+                    <span>{item.label}</span>
+                  </button>
                 )
               })}
             </nav>
           </div>
 
-          {/* Right: Search, Dark Mode Toggle, Avatar Dropdown */}
-          <div className="flex items-center gap-3">
+          {/* Right: Search, Dark Mode, Avatar, Mobile Drawer Trigger */}
+          <div className="flex items-center gap-2 sm:gap-3">
             {/* Search Box / Command Shortcut */}
-            <div className="hidden lg:flex items-center gap-2 rounded-lg border border-border bg-muted/50 px-2.5 py-1 text-xs text-muted-foreground select-none">
+            <div className="hidden lg:flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-2.5 py-1 text-xs text-muted-foreground select-none">
               <Search className="size-3.5 text-muted-foreground" />
-              <span>Search...</span>
+              <span>Search corpus...</span>
               <kbd className="rounded border border-border bg-background px-1.5 py-0.5 text-[10px] font-mono font-medium text-foreground shadow-2xs">
                 Ctrl K
               </kbd>
@@ -113,8 +137,8 @@ export function NavigationHeader() {
             <button
               type="button"
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-              className="flex size-8 items-center justify-center rounded-lg border border-border text-foreground transition hover:bg-accent hover:text-accent-foreground cursor-pointer"
-              title="Toggle theme (or press 'd')"
+              className="flex size-8 items-center justify-center rounded-lg border border-border text-foreground transition hover:bg-accent hover:text-accent-foreground cursor-pointer focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+              title="Toggle theme (press 'd')"
               aria-label="Toggle theme"
             >
               {theme === "dark" ? (
@@ -124,94 +148,207 @@ export function NavigationHeader() {
               )}
             </button>
 
-            {/* User Avatar with Dropdown Menu */}
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                className="flex cursor-pointer items-center justify-center rounded-full p-0.5 transition-transform hover:scale-105 outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                aria-label="User menu"
-              >
-                <Avatar className="size-8 ring-1 ring-border shadow-xs" size="sm">
-                  {avatarUrl ? (
-                    <AvatarImage src={avatarUrl} alt={displayName} />
-                  ) : null}
-                  <AvatarFallback className="bg-muted text-muted-foreground text-xs font-semibold">
-                    {initials}
-                  </AvatarFallback>
-                </Avatar>
-              </DropdownMenuTrigger>
-
-              <DropdownMenuContent
-                align="end"
-                sideOffset={8}
-                className="w-56 rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-lg"
-              >
-                <DropdownMenuGroup>
-                  <DropdownMenuLabel className="px-2.5 py-2 text-xs normal-case tracking-normal">
-                    <div className="font-semibold text-foreground truncate">
-                      {displayName}
-                    </div>
-                    {email ? (
-                      <div className="text-muted-foreground text-[11px] font-normal truncate mt-0.5">
-                        {email}
-                      </div>
-                    ) : null}
-                  </DropdownMenuLabel>
-                </DropdownMenuGroup>
-
-                <DropdownMenuSeparator className="my-1 border-border" />
-
-                <DropdownMenuGroup>
-                  <DropdownMenuItem
-                    onClick={() => navigate("/dashboard")}
-                    className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-foreground hover:bg-accent hover:text-accent-foreground"
-                  >
-                    <User className="size-3.5 text-muted-foreground" />
-                    <span>Account Setting</span>
-                  </DropdownMenuItem>
-
-                  <DropdownMenuItem
-                    onClick={() => navigate("/dashboard")}
-                    className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-foreground hover:bg-accent hover:text-accent-foreground"
-                  >
-                    <Settings className="size-3.5 text-muted-foreground" />
-                    <span>App Setting</span>
-                  </DropdownMenuItem>
-                </DropdownMenuGroup>
-
-                <DropdownMenuSeparator className="my-1 border-border" />
-
-                <DropdownMenuItem
-                  onClick={signOut}
-                  variant="destructive"
-                  className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-destructive hover:bg-destructive/10 dark:hover:bg-destructive/20"
+            {/* Desktop Avatar with Dropdown Menu */}
+            <div className="hidden sm:block">
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  className="flex cursor-pointer items-center justify-center rounded-full p-0.5 transition-transform hover:scale-105 outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                  aria-label="User menu"
                 >
-                  <LogOut className="size-3.5 text-destructive" />
-                  <span>Log out</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        </div>
+                  <Avatar className="size-8 ring-1 ring-border shadow-xs" size="sm">
+                    {avatarUrl ? (
+                      <AvatarImage src={avatarUrl} alt={displayName} />
+                    ) : null}
+                    <AvatarFallback className="bg-muted text-muted-foreground text-xs font-semibold">
+                      {initials}
+                    </AvatarFallback>
+                  </Avatar>
+                </DropdownMenuTrigger>
 
-        {/* Mobile Nav Links Strip */}
-        <div className="flex sm:hidden items-center justify-around border-t border-border px-4 py-1.5 bg-muted/20">
-          {navItems.map((item) => {
-            const active = isActive(item.href)
-            return (
-              <Link
-                key={item.href}
-                to={item.href}
-                className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium ${
-                  active
-                    ? "bg-primary text-primary-foreground font-semibold"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                <item.icon className="size-3" />
-                {item.label}
-              </Link>
-            )
-          })}
+                <DropdownMenuContent
+                  align="end"
+                  sideOffset={8}
+                  className="w-56 rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-lg"
+                >
+                  <DropdownMenuGroup>
+                    <DropdownMenuLabel className="px-2.5 py-2 text-xs normal-case tracking-normal">
+                      <div className="font-semibold text-foreground truncate">
+                        {displayName}
+                      </div>
+                      {email ? (
+                        <div className="text-muted-foreground text-[11px] font-normal truncate mt-0.5">
+                          {email}
+                        </div>
+                      ) : null}
+                    </DropdownMenuLabel>
+                  </DropdownMenuGroup>
+
+                  <DropdownMenuSeparator className="my-1 border-border" />
+
+                  <DropdownMenuGroup>
+                    <DropdownMenuItem
+                      onClick={() => navigate("/dashboard")}
+                      className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-foreground hover:bg-accent hover:text-accent-foreground"
+                    >
+                      <User className="size-3.5 text-muted-foreground" />
+                      <span>Account Portal</span>
+                    </DropdownMenuItem>
+
+                    <DropdownMenuItem
+                      onClick={() => navigate("/settings")}
+                      className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-foreground hover:bg-accent hover:text-accent-foreground"
+                    >
+                      <Settings className="size-3.5 text-muted-foreground" />
+                      <span>App Settings</span>
+                    </DropdownMenuItem>
+                  </DropdownMenuGroup>
+
+                  <DropdownMenuSeparator className="my-1 border-border" />
+
+                  <DropdownMenuItem
+                    onClick={signOut}
+                    variant="destructive"
+                    className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-destructive hover:bg-destructive/10 dark:hover:bg-destructive/20"
+                  >
+                    <LogOut className="size-3.5 text-destructive" />
+                    <span>Sign out</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+
+            {/* Mobile Drawer Trigger (Hamburger Menu) */}
+            <div className="md:hidden">
+              <Drawer open={isDrawerOpen} onOpenChange={setIsDrawerOpen}>
+                <DrawerTrigger
+                  className="flex size-8 items-center justify-center rounded-lg border border-border text-foreground transition hover:bg-accent hover:text-accent-foreground cursor-pointer focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                  aria-label="Open navigation drawer"
+                >
+                  <Menu className="size-4" />
+                </DrawerTrigger>
+
+                <DrawerContent side="right" className="w-[85vw] max-w-sm">
+                  <DrawerHeader className="border-b border-border text-left">
+                    <div className="flex items-center gap-3">
+                      <Avatar className="size-10 ring-1 ring-border" size="default">
+                        {avatarUrl ? (
+                          <AvatarImage src={avatarUrl} alt={displayName} />
+                        ) : null}
+                        <AvatarFallback className="bg-muted text-muted-foreground font-semibold text-sm">
+                          {initials}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex flex-col min-w-0">
+                        <DrawerTitle className="text-base truncate">
+                          {displayName}
+                        </DrawerTitle>
+                        <DrawerDescription className="truncate text-[11px]">
+                          {email || "Signed in"}
+                        </DrawerDescription>
+                      </div>
+                    </div>
+                  </DrawerHeader>
+
+                  {/* Orientation snapshot inside mobile drawer */}
+                  <div className="my-3 rounded-lg border border-border bg-muted/30 p-3 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-medium text-muted-foreground">Storage</span>
+                      <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                        <HardDrive className="size-3" />
+                        {isLocal ? "Local DB" : "Cloud Sync"}
+                      </span>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between pt-2 border-t border-border/60">
+                      <span className="text-[11px] font-medium text-muted-foreground">Provider</span>
+                      <span className="font-mono text-[11px] text-foreground truncate max-w-[150px]">
+                        {activeModelDisplayName}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Nav Links in Drawer */}
+                  <div className="flex flex-col gap-1 py-2" role="menu">
+                    {navItems.map((item) => {
+                      const active = isActive(item.href)
+                      return (
+                        <button
+                          key={item.href}
+                          type="button"
+                          onClick={() => handleNavClick(item.href)}
+                          className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-xs font-medium transition cursor-pointer text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring ${
+                            active
+                              ? "bg-primary text-primary-foreground font-semibold shadow-xs"
+                              : "text-foreground hover:bg-accent"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <item.icon className="size-4 shrink-0" />
+                            <span>{item.label}</span>
+                          </div>
+                          {item.badge ? (
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                              active ? "bg-primary-foreground/20 text-primary-foreground" : "bg-muted text-muted-foreground"
+                            }`}>
+                              {item.badge}
+                            </span>
+                          ) : null}
+                        </button>
+                      )
+                    })}
+
+                    {/* App Settings Drawer Link */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsDrawerOpen(false)
+                        navigate("/settings")
+                      }}
+                      className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-xs font-medium transition cursor-pointer text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring ${
+                        isActive("/settings")
+                          ? "bg-primary text-primary-foreground font-semibold shadow-xs"
+                          : "text-foreground hover:bg-accent"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <Settings className="size-4 shrink-0" />
+                        <span>App Settings</span>
+                      </div>
+                      <span className="text-[10px] text-muted-foreground">
+                        {isLocal ? "Local DB" : "Cloud"}
+                      </span>
+                    </button>
+                  </div>
+
+                  {/* Drawer Footer actions */}
+                  <div className="mt-auto flex flex-col gap-2 pt-4 border-t border-border">
+                    <button
+                      type="button"
+                      onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                      className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground hover:bg-accent cursor-pointer"
+                    >
+                      <div className="flex items-center gap-2">
+                        {theme === "dark" ? <Sun className="size-3.5" /> : <Moon className="size-3.5" />}
+                        <span>Theme</span>
+                      </div>
+                      <span className="capitalize text-muted-foreground">{theme}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsDrawerOpen(false)
+                        signOut()
+                      }}
+                      className="flex items-center gap-2 rounded-lg bg-destructive/10 px-3 py-2 text-xs font-medium text-destructive hover:bg-destructive/20 cursor-pointer"
+                    >
+                      <LogOut className="size-3.5" />
+                      <span>Sign out</span>
+                    </button>
+                  </div>
+                </DrawerContent>
+              </Drawer>
+            </div>
+          </div>
         </div>
       </header>
     </div>
