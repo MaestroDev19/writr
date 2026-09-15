@@ -1,6 +1,15 @@
 export type StorageMode = "default" | "local"
 export type ModelProvider = "ollama" | "gemini" | "groq" | "openai" | "openrouter"
 
+export interface WorkflowPromptConfig {
+  systemPrompt: string
+  temperature: number
+  maxTokens: number
+  topP: number
+  frequencyPenalty: number
+  contextChunks: number
+}
+
 export interface AppSettings {
   storageMode: StorageMode
   modelProvider: ModelProvider
@@ -12,4 +21,7 @@ export interface AppSettings {
   openAiApiKey: string
   openRouterApiKey: string
   localDbPath: string
+  generateConfig?: WorkflowPromptConfig
+  critiqueConfig?: WorkflowPromptConfig
 }
+

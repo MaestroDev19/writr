@@ -152,20 +152,20 @@ export default function DashboardPage() {
       <header className="mb-6 flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1">
         <div>
           <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Writer Orientation
+            Writing Workspace
           </span>
           <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
             Welcome, {displayName}
           </h1>
         </div>
         <p className="text-xs text-muted-foreground">
-          Single corpus • Two modes • Instant retrieval
+          Personal library • Drafting & critique • Grounded in your voice
         </p>
       </header>
 
-      {/* 1. TOP OF SCREEN: CORPUS HEALTH (§9.3) */}
+      {/* 1. TOP OF SCREEN: LIBRARY STATUS */}
       <section
-        aria-label="Corpus Health Overview"
+        aria-label="Library Status Overview"
         aria-live="polite"
         className={`rounded-2xl border p-5 sm:p-6 transition-all duration-200 ${
           corpusStatus === "stale"
@@ -200,7 +200,7 @@ export default function DashboardPage() {
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-                  Corpus Health
+                  Library Status
                 </span>
 
                 {/* Status Badge with ternary rendering (rendering-conditional-render) */}
@@ -214,7 +214,7 @@ export default function DashboardPage() {
                 {corpusStatus === "stale" ? (
                   <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-semibold text-amber-700 dark:text-amber-300">
                     <AlertTriangle className="size-3.5" />
-                    Stale — Re-index recommended
+                    Update recommended
                   </span>
                 ) : null}
 
@@ -223,7 +223,7 @@ export default function DashboardPage() {
                     <span className="inline-flex animate-spin mr-1">
                       <RefreshCw className="size-3" />
                     </span>
-                    Re-indexing chunks ({indexingProgress}%)
+                    Updating library ({indexingProgress}%)
                   </span>
                 ) : null}
 
@@ -231,11 +231,11 @@ export default function DashboardPage() {
                 <button
                   type="button"
                   onClick={toggleStorageMode}
-                  title="Click to toggle storage engine (Local DB vs. Cloud Sync)"
+                  title="Click to switch between local storage and cloud sync"
                   className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/60 px-2 py-0.5 text-[11px] font-medium text-muted-foreground hover:text-foreground transition cursor-pointer"
                 >
                   <HardDrive className="size-3 text-primary" />
-                  <span>{isLocal ? "Local DB (Private)" : "Cloud Sync (Supabase)"}</span>
+                  <span>{isLocal ? "Saved on this device (Private)" : "Synced to cloud"}</span>
                 </button>
               </div>
 
@@ -245,11 +245,11 @@ export default function DashboardPage() {
                 </span>
                 <span className="text-muted-foreground text-xs" aria-hidden="true">•</span>
                 <span className="text-muted-foreground">
-                  {totalChunks} vectorized chunks
+                  {totalChunks} searchable passages
                 </span>
                 <span className="text-muted-foreground text-xs" aria-hidden="true">•</span>
                 <span className="text-xs text-muted-foreground">
-                  Last ingested: <span className="font-medium text-foreground">{lastIngestedTime}</span>
+                  Last updated: <span className="font-medium text-foreground">{lastIngestedTime}</span>
                 </span>
               </div>
             </div>
@@ -264,7 +264,7 @@ export default function DashboardPage() {
                 className="bg-amber-600 hover:bg-amber-700 text-white font-medium text-xs shadow-xs"
               >
                 <RefreshCw className="size-3.5" />
-                Re-index Now
+                Update Now
               </Button>
             ) : (
               <Button
@@ -281,7 +281,7 @@ export default function DashboardPage() {
                 ) : (
                   <RefreshCw className="size-3.5" />
                 )}
-                Sync Corpus
+                Update Library
               </Button>
             )}
 
@@ -291,14 +291,14 @@ export default function DashboardPage() {
               onClick={scrollToCorpus}
               className="text-xs text-muted-foreground hover:text-foreground"
             >
-              Manage Sources
+              View Documents
             </Button>
           </div>
         </div>
 
         {/* Indexing Progress Bar */}
         {corpusStatus === "indexing" ? (
-          <div className="mt-4 w-full" role="progressbar" aria-valuenow={indexingProgress} aria-valuemin={0} aria-valuemax={100} aria-label="Corpus indexing progress">
+          <div className="mt-4 w-full" role="progressbar" aria-valuenow={indexingProgress} aria-valuemin={0} aria-valuemax={100} aria-label="Library update progress">
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-primary/20">
               <div
                 className="h-full bg-primary transition-all duration-300"
@@ -306,15 +306,15 @@ export default function DashboardPage() {
               />
             </div>
             <p className="mt-1 text-[11px] text-muted-foreground">
-              Embedding documents with 512-token chunks and cosine similarity vectors...
+              Reading and organizing your documents so the AI can reference them...
             </p>
           </div>
         ) : null}
       </section>
 
-      {/* 2. ACTIVE MODEL & RATE LIMIT (§9.2 & §7B.3) */}
+      {/* 2. ACTIVE MODEL & USAGE */}
       <section
-        aria-label="Active Model and Inference Status"
+        aria-label="Active Model and Usage Status"
         className="mt-4 flex flex-col gap-3 rounded-xl border border-border bg-card/60 p-3.5 sm:flex-row sm:items-center sm:justify-between text-xs"
       >
         {/* Active Model Indicator */}
@@ -327,8 +327,8 @@ export default function DashboardPage() {
             <span className="font-semibold text-foreground">
               {activeModelDisplayName}
             </span>
-            <span className="ml-2 rounded border border-border bg-muted/60 px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground">
-              {settings.modelProvider === "ollama" ? "Local Machine" : "Cloud Inference"}
+            <span className="ml-2 rounded border border-border bg-muted/60 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+              {settings.modelProvider === "ollama" ? "On Your Device" : "Cloud AI"}
             </span>
           </div>
         </div>
@@ -338,17 +338,17 @@ export default function DashboardPage() {
           {settings.modelProvider === "ollama" ? (
             <div className="flex items-center gap-1.5 text-muted-foreground">
               <ShieldCheck className="size-3.5 text-emerald-600 dark:text-emerald-400" />
-              <span>Unlimited local inference • Zero network latency</span>
+              <span>Private & unlimited • Runs directly on your device</span>
             </div>
           ) : (
             <div className="flex items-center gap-2">
-              <span className="text-muted-foreground">Rate limit:</span>
+              <span className="text-muted-foreground">Daily usage:</span>
               <span className="font-medium text-foreground">
-                {requestCount.toLocaleString()} of ~{maxRequests.toLocaleString()} requests today
+                {requestCount.toLocaleString()} of ~{maxRequests.toLocaleString()} requests used today
               </span>
               <div
                 className="h-2 w-12 rounded-full bg-muted overflow-hidden"
-                title={`${((requestCount / maxRequests) * 100).toFixed(1)}% consumed`}
+                title={`${((requestCount / maxRequests) * 100).toFixed(1)}% used`}
               >
                 <div
                   className="h-full bg-primary"
@@ -363,10 +363,10 @@ export default function DashboardPage() {
             type="button"
             onClick={() => updateSettings({ modelProvider: settings.modelProvider === "ollama" ? "gemini" : "ollama" })}
             className="rounded border border-border px-2 py-1 text-[11px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition cursor-pointer focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-            title="Switch model provider"
-            aria-label={`Switch to ${settings.modelProvider === "ollama" ? "Gemini Online" : "Local Ollama"} provider`}
+            title="Switch AI source"
+            aria-label={`Switch to ${settings.modelProvider === "ollama" ? "Cloud AI" : "Local AI"}`}
           >
-            Switch to {settings.modelProvider === "ollama" ? "Gemini" : "Local"}
+            Switch to {settings.modelProvider === "ollama" ? "Cloud AI" : "Local AI"}
           </button>
 
           {/* Direct link to App Settings */}
@@ -382,14 +382,14 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      {/* 3. TWO CLEAR ENTRY POINTS (§6) */}
+      {/* 3. TWO CLEAR ENTRY POINTS */}
       <section aria-label="Creative Workspaces" className="mt-8">
         <div className="mb-3">
           <h2 className="text-sm font-semibold tracking-wider text-muted-foreground uppercase">
-            Start A Session
+            Start Writing
           </h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Choose your retrieval strategy based on creative intent.
+            Choose what you'd like to work on right now.
           </p>
         </div>
 
@@ -405,8 +405,8 @@ export default function DashboardPage() {
             }}
             tabIndex={0}
             role="button"
-            aria-label="New idea workspace - Open Narrative Studio"
-            className="group relative flex flex-col justify-between rounded-2xl border border-border bg-card p-6 shadow-xs transition hover:border-primary/60 hover:shadow-md cursor-pointer focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label="New idea - Open Writing Studio"
+            className="group relative flex flex-col justify-between rounded-2xl border border-border bg-card p-6 transition hover:border-primary/60 cursor-pointer focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           >
             <div>
               <div className="flex items-center justify-between">
@@ -414,7 +414,7 @@ export default function DashboardPage() {
                   <Sparkles className="size-5.5" />
                 </div>
                 <span className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground">
-                  Broad Recall
+                  Creative Flow
                 </span>
               </div>
 
@@ -424,17 +424,17 @@ export default function DashboardPage() {
                   <ArrowUpRight className="size-4 text-muted-foreground opacity-0 transition-all group-hover:opacity-100 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
                 </h3>
                 <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                  Draft unconstrained narrative scenes, explore creative prose variations, and brainstorm concepts. Retrieves thematic resonances across your entire corpus.
+                  Draft fresh scenes, test new plot points, and brainstorm ideas. The assistant draws inspiration and themes from everything in your library.
                 </p>
               </div>
             </div>
 
             <div className="mt-6 pt-4 border-t border-border/60 flex items-center justify-between">
               <span className="text-xs font-semibold text-primary">
-                Open Narrative Studio
+                Open Writing Studio
               </span>
               <span className="text-[11px] text-muted-foreground" aria-hidden="true">
-                → Generate
+                → Start Drafting
               </span>
             </div>
           </article>
@@ -450,8 +450,8 @@ export default function DashboardPage() {
             }}
             tabIndex={0}
             role="button"
-            aria-label="Check my structure workspace - Run Manuscript Critique"
-            className="group relative flex flex-col justify-between rounded-2xl border border-border bg-card p-6 shadow-xs transition hover:border-primary/60 hover:shadow-md cursor-pointer focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label="Check my structure - Get Manuscript Feedback"
+            className="group relative flex flex-col justify-between rounded-2xl border border-border bg-card p-6 transition hover:border-primary/60 cursor-pointer focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           >
             <div>
               <div className="flex items-center justify-between">
@@ -459,7 +459,7 @@ export default function DashboardPage() {
                   <MessageSquareQuote className="size-5.5" />
                 </div>
                 <span className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground">
-                  Targeted Rubric
+                  Polish & Review
                 </span>
               </div>
 
@@ -469,27 +469,27 @@ export default function DashboardPage() {
                   <ArrowUpRight className="size-4 text-muted-foreground opacity-0 transition-all group-hover:opacity-100 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
                 </h3>
                 <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                  Inspect prose cadence, identify pacing dips, verify tone consistency, and audit chapter transitions directly against indexed reference standards.
+                  Review story pacing, check tone consistency, and polish chapter transitions against your reference notes and style guides.
                 </p>
               </div>
             </div>
 
             <div className="mt-6 pt-4 border-t border-border/60 flex items-center justify-between">
               <span className="text-xs font-semibold text-primary">
-                Run Manuscript Critique
+                Get Manuscript Feedback
               </span>
               <span className="text-[11px] text-muted-foreground" aria-hidden="true">
-                → Critique
+                → Review Writing
               </span>
             </div>
           </article>
         </div>
       </section>
 
-      {/* 4. MERGED INGESTION CONSOLE (Directly in Dashboard) */}
+      {/* 4. REFERENCE LIBRARY & DOCUMENTS */}
       <section
         id="corpus"
-        aria-label="Knowledge Ingestion and Corpus Management"
+        aria-label="Reference Library and Document Management"
         className="mt-12 rounded-2xl border border-border bg-card p-6 scroll-mt-20"
       >
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-6 border-b border-border">
@@ -497,11 +497,11 @@ export default function DashboardPage() {
             <div className="flex items-center gap-2">
               <Database className="size-4 text-primary" />
               <h2 className="text-lg font-bold text-foreground">
-                Corpus & Knowledge Ingestion
+                Your Reference Library
               </h2>
             </div>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              Single-corpus grounding store. Reference manuscripts, research notes, and style guidelines.
+              Add your manuscripts, research notes, and style guides so the AI learns your voice.
             </p>
           </div>
 
@@ -514,7 +514,7 @@ export default function DashboardPage() {
               className="text-xs"
             >
               <Plus className="size-3.5" />
-              Add Sample Doc
+              Add Sample Document
             </Button>
 
             <Button
@@ -531,7 +531,7 @@ export default function DashboardPage() {
               ) : (
                 <RefreshCw className="size-3.5" />
               )}
-              Re-index All
+              Update All
             </Button>
           </div>
         </div>
@@ -539,7 +539,7 @@ export default function DashboardPage() {
         {/* Upload Dropzone */}
         <div
           role="region"
-          aria-label="Manuscript file dropzone"
+          aria-label="Upload reference files"
           tabIndex={0}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {
@@ -577,10 +577,10 @@ export default function DashboardPage() {
             <UploadCloud className="size-6" />
           </div>
           <h3 className="mt-3 text-sm font-semibold text-foreground">
-            Drop manuscript files or click to browse
+            Drop your writing files here or click to browse
           </h3>
           <p className="mt-1 text-xs text-muted-foreground">
-            Supports PDF, DOCX, TXT, EPUB and Markdown (up to 50MB per file)
+            Supports PDF, Word (.docx), text, EPUB, and Markdown (up to 50MB per file)
           </p>
         </div>
 
@@ -588,17 +588,17 @@ export default function DashboardPage() {
         <div className="mt-6">
           <div className="flex items-center justify-between pb-3">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Indexed Documents ({documents.length})
+              Uploaded Documents ({documents.length})
             </h3>
             <span className="text-[11px] text-muted-foreground">
-              Vector embedding: OKLCH Cosine 1536-dim
+              Ready for style reference
             </span>
           </div>
 
           <div className="divide-y divide-border border-y border-border">
             {documents.length === 0 ? (
               <div className="py-8 text-center text-xs text-muted-foreground">
-                No documents currently indexed. Add files above to build your grounding corpus.
+                No documents added yet. Add files above to help the AI learn your style.
               </div>
             ) : (
               documents.map((doc) => (
@@ -617,7 +617,7 @@ export default function DashboardPage() {
                     <div className="min-w-0">
                       <p className="font-medium text-foreground truncate">{doc.name}</p>
                       <p className="text-[11px] text-muted-foreground">
-                        {doc.size} • {doc.chunks} chunks • {doc.updatedAt}
+                        {doc.size} • {doc.chunks} passages • {doc.updatedAt}
                       </p>
                     </div>
                   </div>
@@ -625,12 +625,12 @@ export default function DashboardPage() {
                   <div className="flex items-center gap-3 shrink-0 ml-4">
                     {doc.isStale ? (
                       <span className="rounded bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">
-                        Needs Re-index
+                        Needs Update
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1 rounded bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
                         <CheckCircle2 className="size-3" />
-                        Indexed
+                        Ready
                       </span>
                     )}
 
@@ -638,7 +638,7 @@ export default function DashboardPage() {
                       type="button"
                       onClick={() => handleDeleteDoc(doc.id)}
                       className="size-7 flex items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition cursor-pointer focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-                      title="Remove document from corpus"
+                      title="Remove document from library"
                       aria-label={`Remove ${doc.name}`}
                     >
                       <Trash2 className="size-3.5" />

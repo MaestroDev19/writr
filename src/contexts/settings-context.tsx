@@ -1,8 +1,26 @@
 /* eslint-disable react-refresh/only-export-components */
 import * as React from "react"
-import type { AppSettings, StorageMode, ModelProvider } from "@/types/settings"
+import type { AppSettings, StorageMode, ModelProvider, WorkflowPromptConfig } from "@/types/settings"
 
-export type { AppSettings, StorageMode, ModelProvider }
+export type { AppSettings, StorageMode, ModelProvider, WorkflowPromptConfig }
+
+export const DEFAULT_GENERATE_CONFIG: WorkflowPromptConfig = {
+  systemPrompt: "You are a literary co-author and prose stylist. Emulate the cadence, thematic resonance, and sensory depth of the reference library. Prioritize narrative propulsion and organic dialogue without generic exposition.",
+  temperature: 0.7,
+  maxTokens: 2048,
+  topP: 0.9,
+  frequencyPenalty: 1.1,
+  contextChunks: 5,
+}
+
+export const DEFAULT_CRITIQUE_CONFIG: WorkflowPromptConfig = {
+  systemPrompt: "You are an incisive developmental editor. Evaluate chapter structure, prose rhythm, tonal consistency, and narrative tension against the reference style guidelines. Cite specific passages and suggest concrete line-level enhancements.",
+  temperature: 0.3,
+  maxTokens: 1536,
+  topP: 0.8,
+  frequencyPenalty: 1.0,
+  contextChunks: 4,
+}
 
 const STORAGE_KEY = "writr_settings_v1"
 
@@ -17,6 +35,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   openAiApiKey: "",
   openRouterApiKey: "",
   localDbPath: "indexeddb://writr-local-store",
+  generateConfig: DEFAULT_GENERATE_CONFIG,
+  critiqueConfig: DEFAULT_CRITIQUE_CONFIG,
 }
 
 interface SettingsContextType {
@@ -34,7 +54,13 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     try {
       const stored = localStorage.getItem(STORAGE_KEY)
       if (stored) {
-        return { ...DEFAULT_SETTINGS, ...JSON.parse(stored) }
+        const parsed = JSON.parse(stored)
+        return {
+          ...DEFAULT_SETTINGS,
+          ...parsed,
+          generateConfig: { ...DEFAULT_GENERATE_CONFIG, ...(parsed.generateConfig || {}) },
+          critiqueConfig: { ...DEFAULT_CRITIQUE_CONFIG, ...(parsed.critiqueConfig || {}) },
+        }
       }
     } catch {
       // fallback to default
