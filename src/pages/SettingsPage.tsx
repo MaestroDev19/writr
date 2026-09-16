@@ -21,6 +21,7 @@ import { Switch } from "@/components/ui/switch"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Badge } from "@/components/ui/badge"
 import {
   Card,
   CardContent,
@@ -67,8 +68,8 @@ interface WorkflowPreset {
 const GENERATE_PRESETS: WorkflowPreset[] = [
   {
     id: "literary-fiction",
-    name: "Literary Fiction",
-    description: "Rich sensory textures, nuanced character interiority, and layered prose cadence.",
+    name: "Literary",
+    description: "Rich detail, quiet emotion, careful prose.",
     systemPrompt:
       "You are an accomplished novelist and literary prose stylist. Emulate the cadence, rhythm, and atmospheric depth found in the author's reference library. Prioritize vivid sensory details, emotional subtext, and varied sentence architecture. Avoid melodrama and unearned sentimentality.",
     temperature: 0.75,
@@ -79,8 +80,8 @@ const GENERATE_PRESETS: WorkflowPreset[] = [
   },
   {
     id: "pacing-tension",
-    name: "Tension & Propulsion",
-    description: "Lean sentences, rapid dialogue exchange, and high narrative momentum.",
+    name: "Tension",
+    description: "Short beats, sharp dialogue, fast momentum.",
     systemPrompt:
       "You are a narrative architect focused on kinetic pacing and scene momentum. Write with concise sentence beats, immediate stakes, and sharp dialogue with heavy subtext. Cut extraneous exposition and heighten dramatic tension through rhythmic sentence acceleration.",
     temperature: 0.65,
@@ -91,8 +92,8 @@ const GENERATE_PRESETS: WorkflowPreset[] = [
   },
   {
     id: "worldbuilding-texture",
-    name: "Worldbuilding & Milieu",
-    description: "Deep historical context, architectural detail, and cultural specificity.",
+    name: "World & place",
+    description: "Setting detail, culture, and physical texture.",
     systemPrompt:
       "You are a worldbuilding specialist and scene painter. Draw specific vernacular, architectural motifs, social customs, and material culture from the grounding corpus. Ground the characters directly within the sensory weight of their immediate physical environment.",
     temperature: 0.8,
@@ -103,8 +104,8 @@ const GENERATE_PRESETS: WorkflowPreset[] = [
   },
   {
     id: "psychological-stream",
-    name: "Psychological Interiority",
-    description: "Fluid consciousness, associative memory recall, and subjective pacing.",
+    name: "Inner life",
+    description: "Thoughts, memory, and subjective pacing.",
     systemPrompt:
       "You are a stylist of psychological realism. Channel the protagonist's fluid perceptions, stream of sensory impressions, and associative memory patterns. Reflect emotional friction through syntactic rhythm and organic transitions.",
     temperature: 0.85,
@@ -118,10 +119,10 @@ const GENERATE_PRESETS: WorkflowPreset[] = [
 const CRITIQUE_PRESETS: WorkflowPreset[] = [
   {
     id: "developmental-structure",
-    name: "Developmental & Structure",
-    description: "Macro-level evaluation: narrative arcs, scene turns, and dramatic tension.",
+    name: "Structure",
+    description: "Order, gaps, and how any story doc or script holds together.",
     systemPrompt:
-      "You are an exacting developmental editor and literary consultant. Evaluate the manuscript excerpt for narrative arc, scene objectives, dramatic tension, and structural momentum. Identify where pacing flags and specify how to tighten structural beats.",
+      "You are an exacting developmental editor. Evaluate the submitted document (scene, script, story bible, character sheet, lore, or other story material) for structure, completeness, internal consistency, and how sections hang together. Name gaps, contradictions, and where reordering or clearer headings would help.",
     temperature: 0.25,
     maxTokens: 1536,
     topP: 0.75,
@@ -130,10 +131,10 @@ const CRITIQUE_PRESETS: WorkflowPreset[] = [
   },
   {
     id: "cadence-rhythm",
-    name: "Prose Cadence & Rhythm",
-    description: "Line-level music: sentence length variance, euphony, and pacing dips.",
+    name: "Flow",
+    description: "Clarity and pacing across prose, scripts, and notes.",
     systemPrompt:
-      "You are a prose stylist specializing in sentence music and auditory cadence. Analyze sentence length variance, rhythm stumbling points, repetitive syllable patterns, and monotonic paragraphs. Suggest rhythmic rewrites that enhance melodic cadence.",
+      "You are a clarity and pacing editor. Analyze the submitted document for readability, rhythm, dense passages, and places a reader or performer would stumble. Suggest rewrites that improve flow whether the text is prose, dialogue, script format, or reference notes.",
     temperature: 0.35,
     maxTokens: 1536,
     topP: 0.8,
@@ -142,10 +143,10 @@ const CRITIQUE_PRESETS: WorkflowPreset[] = [
   },
   {
     id: "voice-consistency",
-    name: "Voice & Tone Consistency",
-    description: "Auditing dialogue registers, authorial distance, and mood coherence.",
+    name: "Voice",
+    description: "Tone and character consistency vs your notes.",
     systemPrompt:
-      "You are an editorial voice coach. Audit the text against the author's reference corpus for stylistic integrity. Highlight tonal anomalies, anachronistic vocabulary, dialogue that slips out of character, and inconsistent authorial distance.",
+      "You are a voice and continuity coach. Audit the submitted document against the author's notes for tone, character voice, naming, and register. Flag slips that break consistency across scenes, scripts, bibles, or character materials.",
     temperature: 0.3,
     maxTokens: 1536,
     topP: 0.8,
@@ -154,10 +155,10 @@ const CRITIQUE_PRESETS: WorkflowPreset[] = [
   },
   {
     id: "line-edit-polish",
-    name: "Line Edit & Prose Polish",
-    description: "Tightening flab, replacing weak verbs, and eliminating rhetorical ticks.",
+    name: "Line polish",
+    description: "Tighten wording in prose, scripts, and other docs.",
     systemPrompt:
-      "You are a rigorous copy and line editor. Scrutinize the prose for deadwood adjectives, filter words ('she heard', 'he noticed'), passive constructions, and repetitive phrasing. Provide high-impact line-level surgical improvements.",
+      "You are a rigorous line editor. Scrutinize the submitted document for weak phrasing, filler, passive clutter, and repetitive lines. Provide concrete line-level improvements suited to prose, dialogue, scripts, or reference documents.",
     temperature: 0.2,
     maxTokens: 1280,
     topP: 0.7,
@@ -167,44 +168,44 @@ const CRITIQUE_PRESETS: WorkflowPreset[] = [
 ]
 
 const CONTEXT_VARIABLE_TAGS = [
-  { tag: "{{reference_corpus}}", label: "Reference Corpus", desc: "Grounding excerpts from library" },
-  { tag: "{{author_voice}}", label: "Author Voice", desc: "Cadence & voice guidelines" },
-  { tag: "{{manuscript_draft}}", label: "Manuscript Draft", desc: "Active scene or chapter context" },
-  { tag: "{{pacing_rubric}}", label: "Pacing Rubric", desc: "Target rhythm and length boundaries" },
+  { tag: "{{reference_corpus}}", label: "Your notes", desc: "Pulls from your notes library" },
+  { tag: "{{author_voice}}", label: "Your voice", desc: "Tone and style guidelines" },
+  { tag: "{{manuscript_draft}}", label: "Story draft", desc: "Current scene or chapter" },
+  { tag: "{{pacing_rubric}}", label: "Pacing guide", desc: "Target rhythm and length" },
 ]
 
 function getTemperatureDescriptor(temp: number, workflow: "generate" | "critique") {
   if (temp <= 0.3) {
     return {
-      label: "Strict & Analytical",
-      badgeClass: "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/20",
+      label: "Careful",
+      badgeClass: "border-border bg-muted text-foreground",
       description:
         workflow === "critique"
-          ? "Optimal for objective rubric scoring and consistency checks."
-          : "Strict adherence to constraints with minimal stylistic deviation.",
+          ? "Steady, consistent feedback."
+          : "Stays close to your instructions.",
     }
   }
   if (temp <= 0.6) {
     return {
-      label: "Balanced & Cohesive",
-      badgeClass: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20",
-      description: "Consistent voice with natural narrative progression.",
+      label: "Balanced",
+      badgeClass: "border-border bg-muted text-foreground",
+      description: "Natural voice with steady pacing.",
     }
   }
   if (temp <= 0.9) {
     return {
-      label: "Expressive & Lyrical",
-      badgeClass: "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20",
+      label: "Expressive",
+      badgeClass: "border-border bg-muted text-foreground",
       description:
         workflow === "generate"
-          ? "Rich figurative language, poetic metaphors, and varied rhythm."
-          : "Nuanced editorial commentary with creative phrasing suggestions.",
+          ? "Richer detail and varied rhythm."
+          : "More creative edit suggestions.",
     }
   }
   return {
-    label: "High Variance & Experimental",
-    badgeClass: "bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/20",
-    description: "Maximum lexical novelty and divergent scene ideas. Higher unpredictability.",
+    label: "Bold",
+    badgeClass: "border-border bg-muted text-foreground",
+    description: "More creative freedom. Results vary more.",
   }
 }
 
@@ -253,59 +254,39 @@ const AuthorPresetsStrip = React.memo(function AuthorPresetsStrip({
   })
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-2">
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
-          <BookOpen className="size-3.5 text-muted-foreground" />
-          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Author Presets
-          </span>
+          <BookOpen className="size-3.5 text-muted-foreground" aria-hidden="true" />
+          <span className="text-xs font-semibold text-foreground">Quick styles</span>
         </div>
         {presetNotice ? (
-          <span className="text-[11px] font-medium text-primary animate-in fade-in">
-            {presetNotice}
-          </span>
+          <span className="text-[11px] font-medium text-primary">{presetNotice}</span>
         ) : (
-          <span className="text-[11px] text-muted-foreground">
-            Click to load tailored configuration
-          </span>
+          <span className="text-[11px] text-muted-foreground">Tap one to apply</span>
         )}
       </div>
 
-      <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         {activePresets.map((preset) => {
           const isSelected = currentPrompt === preset.systemPrompt
           return (
-            <Card
+            <button
               key={preset.id}
-              role="button"
-              tabIndex={0}
+              type="button"
               onClick={() => onApplyPreset(preset)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault()
-                  onApplyPreset(preset)
-                }
-              }}
               className={cn(
-                "cursor-pointer text-left rounded-xl p-3 transition group",
+                "min-h-[4.25rem] rounded-[var(--radius)] border p-3 text-left transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
                 isSelected
                   ? "border-primary bg-primary/5 ring-1 ring-primary/30"
-                  : "border-border bg-card/60 hover:border-primary/40 hover:bg-muted/30"
+                  : "border-border bg-muted/20 hover:border-primary/40 hover:bg-muted/40"
               )}
             >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-foreground group-hover:text-primary transition">
-                  {preset.name}
-                </span>
-                <span className="text-[10px] font-mono text-muted-foreground">
-                  {preset.temperature.toFixed(2)}t
-                </span>
-              </div>
-              <CardDescription className="mt-1 text-[11px] text-muted-foreground line-clamp-2 leading-relaxed">
+              <span className="block text-xs font-semibold text-foreground">{preset.name}</span>
+              <span className="mt-1 line-clamp-2 text-[11px] leading-snug text-muted-foreground">
                 {preset.description}
-              </CardDescription>
-            </Card>
+              </span>
+            </button>
           )
         })}
       </div>
@@ -373,58 +354,53 @@ const SystemDirectiveCard = React.memo(function SystemDirectiveCard({
   }
 
   return (
-    <Card className="rounded-xl border-border bg-card/50">
-      <CardHeader className="p-4 pb-0">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+    <Card className="rounded-[var(--radius)] border-border bg-card/50">
+      <CardHeader className="gap-2 p-4 pb-0">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <CardTitle className="text-xs font-semibold text-foreground normal-case tracking-normal">
-              System Directive & Persona ({activeWorkflowTab === "generate" ? "Drafting" : "Editorial Review"})
+              Writing instructions ({activeWorkflowTab === "generate" ? "Write" : "Review"})
             </CardTitle>
             <CardDescription className="text-[11px] text-muted-foreground">
-              Guides tone, vocabulary register, and structural pacing rules for the model.
+              Tell Writr how to sound and what to prioritize.
             </CardDescription>
           </div>
 
           <div className="flex items-center gap-2 self-start sm:self-center">
-            <span className="text-[11px] font-mono text-muted-foreground">
-              ~{systemPromptTokensEstimate} tokens
+            <span className="text-[11px] text-muted-foreground tabular-nums">
+              ~{systemPromptTokensEstimate} words est.
             </span>
-            <button
-              type="button"
-              onClick={handleCopyPrompt}
-              className="inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition cursor-pointer"
-              title="Copy system prompt"
-            >
+            <Button type="button" variant="outline" size="xs" onClick={handleCopyPrompt}>
               {copiedPrompt ? (
                 <>
-                  <Check className="size-3 text-emerald-600 dark:text-emerald-400" />
-                  <span>Copied</span>
+                  <Check data-icon="inline-start" />
+                  Copied
                 </>
               ) : (
                 <>
-                  <Copy className="size-3" />
-                  <span>Copy</span>
+                  <Copy data-icon="inline-start" />
+                  Copy
                 </>
               )}
-            </button>
+            </Button>
           </div>
         </div>
       </CardHeader>
 
-      <CardContent className="p-4 pt-3 space-y-3">
-        {/* Context Variable Insert Chips */}
-        <div className="flex flex-wrap items-center gap-1.5 pt-1">
-          <span className="text-[11px] text-muted-foreground mr-1">Inject variable:</span>
+      <CardContent className="flex flex-col gap-3 p-4 pt-3">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="me-1 text-[11px] text-muted-foreground">Insert:</span>
           {CONTEXT_VARIABLE_TAGS.map((v) => (
-            <button
+            <Button
               key={v.tag}
               type="button"
+              variant="outline"
+              size="xs"
               onClick={() => handleInsertTag(v.tag)}
               title={v.desc}
-              className="rounded-md border border-dashed border-border bg-muted/40 hover:bg-muted hover:border-primary/50 px-2 py-0.5 text-[10px] font-mono text-foreground transition cursor-pointer"
             >
-              + {v.tag}
-            </button>
+              + {v.label}
+            </Button>
           ))}
         </div>
 
@@ -441,8 +417,9 @@ const SystemDirectiveCard = React.memo(function SystemDirectiveCard({
               rows={5}
               value={field.value}
               onChange={field.onChange}
-              placeholder="Enter system persona and workflow instructions..."
-              className="w-full rounded-lg border border-border bg-background p-3 text-xs leading-relaxed font-mono outline-hidden transition focus:border-primary focus:ring-1 focus:ring-primary/40 resize-y"
+              placeholder="e.g. Write in a quiet literary voice. Keep dialogue short…"
+              autoComplete="off"
+              className="w-full resize-y rounded-[var(--radius)] border border-border bg-background p-3 text-sm leading-relaxed outline-hidden transition-[border-color,box-shadow] focus:border-primary focus:ring-2 focus:ring-primary/30"
             />
           )}
         />
@@ -489,14 +466,15 @@ const InferenceControlsCard = React.memo(function InferenceControlsCard({
 
   const tempDesc = getTemperatureDescriptor(temperature, activeWorkflowTab)
   const estWordCount = Math.round(maxTokens * 0.75)
+  const [showAdvanced, setShowAdvanced] = React.useState(false)
 
   return (
-    <Card className="rounded-xl border-border bg-card/50">
-      <CardHeader className="p-4 pb-3 border-b border-border/70 flex flex-row items-center justify-between">
+    <Card className="rounded-[var(--radius)] border-border bg-card/50">
+      <CardHeader className="flex flex-row items-center justify-between gap-2 border-b border-border/70 p-4 pb-3">
         <div className="flex items-center gap-2">
-          <SlidersHorizontal className="size-4 text-primary" />
+          <SlidersHorizontal className="size-4 text-primary" aria-hidden="true" />
           <CardTitle className="text-xs font-semibold text-foreground normal-case tracking-normal">
-            Inference & Temperature Controls
+            Style controls
           </CardTitle>
         </div>
         <Button
@@ -504,30 +482,25 @@ const InferenceControlsCard = React.memo(function InferenceControlsCard({
           variant="ghost"
           size="sm"
           onClick={onResetToDefault}
-          className="h-auto p-0 text-[11px] font-medium text-muted-foreground hover:text-primary hover:bg-transparent cursor-pointer"
+          className="h-auto p-0 text-[11px] text-muted-foreground hover:bg-transparent hover:text-primary"
         >
-          <RotateCcw className="size-3 mr-1" />
-          Reset {activeWorkflowTab} defaults
+          <RotateCcw data-icon="inline-start" />
+          Reset
         </Button>
       </CardHeader>
 
-      <CardContent className="p-4 space-y-5">
+      <CardContent className="flex flex-col gap-5 p-4">
         <div className="grid gap-6 sm:grid-cols-2">
-          {/* 1. Temperature Control */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between gap-2">
               <Label htmlFor="param-temperature" className="text-xs font-semibold">
-                Temperature
+                Creativity
               </Label>
               <div className="flex items-center gap-2">
-                <span className="font-mono text-xs font-bold text-foreground">
+                <span className="text-xs font-bold tabular-nums text-foreground">
                   {temperature.toFixed(2)}
                 </span>
-                <span
-                  className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${tempDesc.badgeClass}`}
-                >
-                  {tempDesc.label}
-                </span>
+                <Badge variant="outline">{tempDesc.label}</Badge>
               </div>
             </div>
 
@@ -543,25 +516,21 @@ const InferenceControlsCard = React.memo(function InferenceControlsCard({
                   step="0.05"
                   value={field.value}
                   onChange={(e) => field.onChange(parseFloat(e.target.value))}
-                  className="w-full h-1.5 rounded-lg bg-muted appearance-none cursor-pointer accent-primary"
-                  aria-label="Model temperature slider"
+                  className="h-2 w-full cursor-pointer appearance-none rounded-full bg-muted accent-primary"
+                  aria-label="Creativity"
                 />
               )}
             />
-
-            <p className="text-[11px] text-muted-foreground leading-relaxed">
-              {tempDesc.description}
-            </p>
+            <p className="text-[11px] text-muted-foreground">{tempDesc.description}</p>
           </div>
 
-          {/* 2. Target Output Length (Tokens) */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between gap-2">
               <Label htmlFor="param-max-tokens" className="text-xs font-semibold">
-                Maximum Output Tokens
+                Response length
               </Label>
-              <span className="font-mono text-xs font-bold text-foreground">
-                {maxTokens} tokens (~{estWordCount} words)
+              <span className="text-xs font-bold tabular-nums text-foreground">
+                ~{estWordCount} words
               </span>
             </div>
 
@@ -577,93 +546,23 @@ const InferenceControlsCard = React.memo(function InferenceControlsCard({
                   step="128"
                   value={field.value}
                   onChange={(e) => field.onChange(parseInt(e.target.value, 10))}
-                  className="w-full h-1.5 rounded-lg bg-muted appearance-none cursor-pointer accent-primary"
-                  aria-label="Max tokens slider"
+                  className="h-2 w-full cursor-pointer appearance-none rounded-full bg-muted accent-primary"
+                  aria-label="Response length"
                 />
               )}
             />
-
-            <p className="text-[11px] text-muted-foreground leading-relaxed">
-              Limits generation length. Shorter lengths keep critiques concise; higher lengths allow expansive chapter scenes.
+            <p className="text-[11px] text-muted-foreground">
+              How long Writr’s reply can be.
             </p>
           </div>
 
-          {/* 3. Top-P (Nucleus Sampling) */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="param-top-p" className="text-xs font-semibold">
-                Top-P (Nucleus Sampling)
-              </Label>
-              <span className="font-mono text-xs font-bold text-foreground">
-                {topP.toFixed(2)}
-              </span>
-            </div>
-
-            <Controller
-              control={control}
-              name={`${activeWorkflowTab}Config.topP`}
-              render={({ field }) => (
-                <input
-                  id="param-top-p"
-                  type="range"
-                  min="0.1"
-                  max="1.0"
-                  step="0.05"
-                  value={field.value}
-                  onChange={(e) => field.onChange(parseFloat(e.target.value))}
-                  className="w-full h-1.5 rounded-lg bg-muted appearance-none cursor-pointer accent-primary"
-                  aria-label="Top-P nucleus sampling slider"
-                />
-              )}
-            />
-
-            <p className="text-[11px] text-muted-foreground leading-relaxed">
-              Controls lexical diversity. Lower values focus on the most probable words; higher values broaden diction.
-            </p>
-          </div>
-
-          {/* 4. Repetition Penalty */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="param-repetition" className="text-xs font-semibold">
-                Repetition Penalty
-              </Label>
-              <span className="font-mono text-xs font-bold text-foreground">
-                {frequencyPenalty.toFixed(2)}x
-              </span>
-            </div>
-
-            <Controller
-              control={control}
-              name={`${activeWorkflowTab}Config.frequencyPenalty`}
-              render={({ field }) => (
-                <input
-                  id="param-repetition"
-                  type="range"
-                  min="1.0"
-                  max="1.5"
-                  step="0.05"
-                  value={field.value}
-                  onChange={(e) => field.onChange(parseFloat(e.target.value))}
-                  className="w-full h-1.5 rounded-lg bg-muted appearance-none cursor-pointer accent-primary"
-                  aria-label="Repetition penalty slider"
-                />
-              )}
-            />
-
-            <p className="text-[11px] text-muted-foreground leading-relaxed">
-              Penalizes repeating phrases and syntactical echoes to prevent cyclical prose loops.
-            </p>
-          </div>
-
-          {/* 5. Grounding Passages Chunks */}
-          <div className="space-y-2 sm:col-span-2 pt-2 border-t border-border/50">
-            <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-2 sm:col-span-2 border-t border-border/50 pt-4">
+            <div className="flex items-center justify-between gap-2">
               <Label htmlFor="param-context-chunks" className="text-xs font-semibold">
-                Reference Grounding Passages
+                Notes used
               </Label>
-              <span className="font-mono text-xs font-bold text-primary">
-                Top {contextChunks} library passages
+              <span className="text-xs font-bold tabular-nums text-primary">
+                {contextChunks} sections
               </span>
             </div>
 
@@ -679,16 +578,92 @@ const InferenceControlsCard = React.memo(function InferenceControlsCard({
                   step="1"
                   value={field.value}
                   onChange={(e) => field.onChange(parseInt(e.target.value, 10))}
-                  className="w-full h-1.5 rounded-lg bg-muted appearance-none cursor-pointer accent-primary"
-                  aria-label="Grounding passages slider"
+                  className="h-2 w-full cursor-pointer appearance-none rounded-full bg-muted accent-primary"
+                  aria-label="How many note sections to use"
                 />
               )}
             />
-
-            <p className="text-[11px] text-muted-foreground leading-relaxed">
-              Number of relevant reference passages dynamically retrieved from your uploaded manuscripts and style guides during each session.
+            <p className="text-[11px] text-muted-foreground">
+              How many pieces from your notes library Writr reads each time.
             </p>
           </div>
+        </div>
+
+        <div className="border-t border-border/50 pt-3">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowAdvanced((v) => !v)}
+            aria-expanded={showAdvanced}
+            className="h-auto px-0 text-xs text-muted-foreground hover:bg-transparent hover:text-foreground"
+          >
+            {showAdvanced ? "Hide advanced" : "More options"}
+          </Button>
+
+          {showAdvanced ? (
+            <div className="mt-4 grid gap-6 sm:grid-cols-2">
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between gap-2">
+                  <Label htmlFor="param-top-p" className="text-xs font-semibold">
+                    Word variety
+                  </Label>
+                  <span className="text-xs font-bold tabular-nums">{topP.toFixed(2)}</span>
+                </div>
+                <Controller
+                  control={control}
+                  name={`${activeWorkflowTab}Config.topP`}
+                  render={({ field }) => (
+                    <input
+                      id="param-top-p"
+                      type="range"
+                      min="0.1"
+                      max="1.0"
+                      step="0.05"
+                      value={field.value}
+                      onChange={(e) => field.onChange(parseFloat(e.target.value))}
+                      className="h-2 w-full cursor-pointer appearance-none rounded-full bg-muted accent-primary"
+                      aria-label="Word variety"
+                    />
+                  )}
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Lower = safer word choices. Higher = more unusual phrasing.
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between gap-2">
+                  <Label htmlFor="param-repetition" className="text-xs font-semibold">
+                    Avoid repeats
+                  </Label>
+                  <span className="text-xs font-bold tabular-nums">
+                    {frequencyPenalty.toFixed(2)}
+                  </span>
+                </div>
+                <Controller
+                  control={control}
+                  name={`${activeWorkflowTab}Config.frequencyPenalty`}
+                  render={({ field }) => (
+                    <input
+                      id="param-repetition"
+                      type="range"
+                      min="1.0"
+                      max="1.5"
+                      step="0.05"
+                      value={field.value}
+                      onChange={(e) => field.onChange(parseFloat(e.target.value))}
+                      className="h-2 w-full cursor-pointer appearance-none rounded-full bg-muted accent-primary"
+                      aria-label="Avoid repeats"
+                    />
+                  )}
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Higher = less repeating the same phrases.
+                </p>
+              </div>
+            </div>
+          ) : null}
         </div>
       </CardContent>
     </Card>
@@ -807,7 +782,7 @@ export default function SettingsPage() {
       setValue(`${targetKey}.frequencyPenalty`, preset.frequencyPenalty, { shouldDirty: true })
       setValue(`${targetKey}.contextChunks`, preset.contextChunks, { shouldDirty: true })
 
-      setPresetNotice(`Loaded preset: "${preset.name}"`)
+      setPresetNotice(`Applied: ${preset.name}`)
     },
     [activeWorkflowTab, setValue]
   )
@@ -818,303 +793,335 @@ export default function SettingsPage() {
     const defaultConf =
       activeWorkflowTab === "generate" ? DEFAULT_GENERATE_CONFIG : DEFAULT_CRITIQUE_CONFIG
     setValue(targetKey, defaultConf, { shouldDirty: true })
-    setPresetNotice("Reset to system defaults")
+    setPresetNotice("Reset to defaults")
   }, [activeWorkflowTab, setValue])
 
   return (
-    <div className="mx-auto max-w-4xl px-4 sm:px-6 py-8 sm:py-12">
-      {/* Header */}
-      <header className="mb-8">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Configuration
-        </span>
-        <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-          App Settings
+    <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 sm:py-10">
+      <header className="mb-8 flex flex-col gap-2">
+        <h1 className="text-balance text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+          Settings
         </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Universal mode switch controlling storage database, vector embeddings, and LLM inference.
+        <p className="text-pretty text-sm text-muted-foreground">
+          Choose where Writr runs, then tune how it writes and reviews.
         </p>
       </header>
 
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
-        {/* MASTER SWITCH: CLOUD VS LOCAL MODE */}
-        <Card aria-labelledby="mode-heading" className="rounded-2xl border-border bg-card p-6">
-          <CardHeader className="p-0 pb-6 border-b border-border">
+      <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6">
+        <Card
+          aria-labelledby="mode-heading"
+          className="rounded-[var(--radius-xl)] border-border bg-card p-4 shadow-xs sm:p-6"
+        >
+          <CardHeader className="gap-4 border-b border-border p-0 pb-5">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <div className="flex items-center gap-2">
                   {watchedStorageMode === "local" ? (
-                    <HardDrive className="size-5 text-emerald-600 dark:text-emerald-400" />
+                    <HardDrive
+                      className="size-5 text-emerald-600 dark:text-emerald-400"
+                      aria-hidden="true"
+                    />
                   ) : (
-                    <Cloud className="size-5 text-primary" />
+                    <Cloud className="size-5 text-primary" aria-hidden="true" />
                   )}
-                  <CardTitle id="mode-heading" className="text-lg font-bold text-foreground normal-case tracking-normal">
-                    System Environment
+                  <CardTitle
+                    id="mode-heading"
+                    className="text-lg font-bold text-foreground normal-case tracking-normal"
+                  >
+                    Where Writr runs
                   </CardTitle>
                 </div>
-                <CardDescription className="mt-1 text-xs text-muted-foreground max-w-xl">
-                  One master switch for your entire stack. Toggles storage database, vector embeddings, and LLM model options together.
+                <CardDescription className="mt-1 max-w-xl text-xs">
+                  Cloud is simplest. This device keeps everything private on your computer.
                 </CardDescription>
               </div>
 
-              {/* Master Switch Component */}
-              <div className="flex items-center gap-3 self-start sm:self-center bg-muted/40 p-2 rounded-xl border border-border">
+              <div
+                className="flex flex-wrap items-center gap-2 self-start rounded-[var(--radius)] border border-border bg-muted/40 p-2 sm:self-center"
+                role="group"
+                aria-label="Storage mode"
+              >
                 <Label
                   htmlFor="master-mode-toggle"
-                  className={`text-xs font-semibold cursor-pointer ${
-                    watchedStorageMode === "default" ? "text-primary font-bold" : "text-muted-foreground"
-                  }`}
+                  className={cn(
+                    "cursor-pointer text-xs font-semibold",
+                    watchedStorageMode === "default"
+                      ? "text-primary"
+                      : "text-muted-foreground"
+                  )}
                 >
-                  Default (Cloud)
+                  Cloud
                 </Label>
 
                 <Switch
                   id="master-mode-toggle"
                   checked={watchedStorageMode === "local"}
                   onCheckedChange={handleModeToggle}
-                  aria-label="Toggle between Cloud and Local Mode"
+                  aria-label="Switch between Cloud and This device"
                 />
 
                 <Label
                   htmlFor="master-mode-toggle"
-                  className={`text-xs font-semibold cursor-pointer ${
+                  className={cn(
+                    "cursor-pointer text-xs font-semibold",
                     watchedStorageMode === "local"
-                      ? "text-emerald-600 dark:text-emerald-400 font-bold"
+                      ? "text-emerald-600 dark:text-emerald-400"
                       : "text-muted-foreground"
-                  }`}
+                  )}
                 >
-                  Local (On-Device)
+                  This device
                 </Label>
               </div>
             </div>
           </CardHeader>
 
-          {/* Environment Summary Cards */}
-          <CardContent className="p-0 pt-6">
+          <CardContent className="p-0 pt-5">
             {watchedStorageMode === "default" ? (
-              <Card className="rounded-xl border-primary/20 bg-primary/5 p-5 text-xs">
+              <div className="flex flex-col gap-3 rounded-[var(--radius)] border border-primary/20 bg-primary/5 p-4 text-xs sm:p-5">
                 <div className="flex items-center gap-2 font-semibold text-primary">
-                  <Sparkles className="size-4" />
-                  <span>Cloud Stack Active • Zero Local Configuration Required</span>
+                  <Sparkles className="size-4" aria-hidden="true" />
+                  <span>Cloud is on</span>
                 </div>
-                <p className="mt-1.5 text-muted-foreground leading-relaxed">
-                  All systems run on the managed cloud infrastructure. Your documents, embeddings, and generative inference are synchronized automatically. Local LLM and embedding configurations are hidden in Cloud mode.
+                <p className="leading-relaxed text-muted-foreground">
+                  Notes and writing run online. No local setup needed.
                 </p>
-
-                <div className="mt-4 grid gap-3 sm:grid-cols-3 pt-4 border-t border-primary/10">
-                  <Card className="rounded-lg bg-background/80 p-3 border-border/60">
-                    <span className="font-semibold text-foreground block">1. Database</span>
-                    <span className="text-muted-foreground text-[11px]">Supabase PostgreSQL (RLS)</span>
-                  </Card>
-                  <Card className="rounded-lg bg-background/80 p-3 border-border/60">
-                    <span className="font-semibold text-foreground block">2. Vector Embeddings</span>
-                    <span className="text-muted-foreground text-[11px]">1536-dim Cloud pgvector</span>
-                  </Card>
-                  <Card className="rounded-lg bg-background/80 p-3 border-border/60">
-                    <span className="font-semibold text-foreground block">3. LLM Inference</span>
-                    <span className="text-muted-foreground text-[11px]">Cloud Managed Intelligence</span>
-                  </Card>
+                <div className="grid gap-2 border-t border-primary/10 pt-3 sm:grid-cols-3">
+                  <div className="rounded-[var(--radius-sm)] border border-border/60 bg-background/80 p-3">
+                    <span className="block font-semibold text-foreground">Notes</span>
+                    <span className="text-[11px] text-muted-foreground">Saved in the cloud</span>
+                  </div>
+                  <div className="rounded-[var(--radius-sm)] border border-border/60 bg-background/80 p-3">
+                    <span className="block font-semibold text-foreground">Writing help</span>
+                    <span className="text-[11px] text-muted-foreground">Managed for you</span>
+                  </div>
+                  <div className="rounded-[var(--radius-sm)] border border-border/60 bg-background/80 p-3">
+                    <span className="block font-semibold text-foreground">Sync</span>
+                    <span className="text-[11px] text-muted-foreground">Works across devices</span>
+                  </div>
                 </div>
-              </Card>
+              </div>
             ) : (
-              <Card className="rounded-xl border-emerald-500/30 bg-emerald-500/5 p-5 text-xs">
+              <div className="flex flex-col gap-3 rounded-[var(--radius)] border border-emerald-500/30 bg-emerald-500/5 p-4 text-xs sm:p-5">
                 <div className="flex items-center gap-2 font-semibold text-emerald-700 dark:text-emerald-400">
-                  <ShieldCheck className="size-4" />
-                  <span>Local Stack Active • 100% Offline & Private</span>
+                  <ShieldCheck className="size-4" aria-hidden="true" />
+                  <span>This device is on</span>
                 </div>
-                <p className="mt-1.5 text-muted-foreground leading-relaxed">
-                  All operations run locally on your machine. Documents are saved to local device database, vector chunks are embedded locally, and queries are answered by your local Ollama daemon. Zero network traffic.
+                <p className="leading-relaxed text-muted-foreground">
+                  Notes and writing stay on your computer. You need a local model app running (Ollama).
                 </p>
-
-                <div className="mt-4 grid gap-3 sm:grid-cols-3 pt-4 border-t border-emerald-500/20">
-                  <Card className="rounded-lg bg-background/80 p-3 border-border/60">
-                    <span className="font-semibold text-foreground block">1. Local Database</span>
-                    <span className="text-muted-foreground text-[11px]">IndexedDB on device</span>
-                  </Card>
-                  <Card className="rounded-lg bg-background/80 p-3 border-border/60">
-                    <span className="font-semibold text-foreground block">2. Local Embeddings</span>
-                    <span className="text-muted-foreground text-[11px]">Ollama (nomic-embed-text)</span>
-                  </Card>
-                  <Card className="rounded-lg bg-background/80 p-3 border-border/60">
-                    <span className="font-semibold text-foreground block">3. Local LLM</span>
-                    <span className="text-muted-foreground text-[11px]">Ollama ({watchedOllamaModel})</span>
-                  </Card>
+                <div className="grid gap-2 border-t border-emerald-500/20 pt-3 sm:grid-cols-3">
+                  <div className="rounded-[var(--radius-sm)] border border-border/60 bg-background/80 p-3">
+                    <span className="block font-semibold text-foreground">Notes</span>
+                    <span className="text-[11px] text-muted-foreground">Saved on this computer</span>
+                  </div>
+                  <div className="rounded-[var(--radius-sm)] border border-border/60 bg-background/80 p-3">
+                    <span className="block font-semibold text-foreground">Writing model</span>
+                    <span className="truncate text-[11px] text-muted-foreground">
+                      {watchedOllamaModel}
+                    </span>
+                  </div>
+                  <div className="rounded-[var(--radius-sm)] border border-border/60 bg-background/80 p-3">
+                    <span className="block font-semibold text-foreground">Privacy</span>
+                    <span className="text-[11px] text-muted-foreground">Stays offline</span>
+                  </div>
                 </div>
-              </Card>
+              </div>
             )}
           </CardContent>
         </Card>
 
-        {/* LOCAL MODELS & EMBEDDINGS (SHOWN ONLY IN LOCAL MODE) */}
         {watchedStorageMode === "local" ? (
           <Card
             aria-labelledby="local-models-heading"
-            className="rounded-2xl border-border bg-card p-6 animate-in fade-in-50 duration-200"
+            className="rounded-[var(--radius-xl)] border-border bg-card p-4 shadow-xs sm:p-6"
           >
-            <CardHeader className="p-0 pb-6 border-b border-border">
+            <CardHeader className="gap-1 border-b border-border p-0 pb-5">
               <div className="flex items-center gap-2">
-                <Server className="size-4 text-emerald-600 dark:text-emerald-400" />
-                <CardTitle id="local-models-heading" className="text-lg font-bold text-foreground normal-case tracking-normal">
-                  Local Ollama Models & Embeddings
+                <Server
+                  className="size-4 text-emerald-600 dark:text-emerald-400"
+                  aria-hidden="true"
+                />
+                <CardTitle
+                  id="local-models-heading"
+                  className="text-lg font-bold text-foreground normal-case tracking-normal"
+                >
+                  Local models
                 </CardTitle>
               </div>
-              <CardDescription className="mt-1 text-xs text-muted-foreground">
-                Configure on-device inference and vector embedding models powered by your local Ollama service.
+              <CardDescription className="text-xs">
+                Point Writr at your local model app, then pick writing and notes models.
               </CardDescription>
             </CardHeader>
 
-            <CardContent className="p-0 pt-6 space-y-6">
-              {/* Ollama Daemon Endpoint */}
-              <div>
+            <CardContent className="flex flex-col gap-6 p-0 pt-5">
+              <div className="flex flex-col gap-1.5">
                 <Label htmlFor="ollama-endpoint" className="text-xs font-semibold">
-                  Ollama Service Endpoint
+                  App address
                 </Label>
-                <div className="flex items-center gap-3 mt-1.5">
+                <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center">
                   <Input
                     id="ollama-endpoint"
                     {...register("ollamaEndpoint")}
                     placeholder="http://localhost:11434"
-                    className="font-mono text-xs max-w-md"
+                    className="w-full sm:max-w-md"
+                    autoComplete="off"
+                    spellCheck={false}
                   />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={handleTestOllama}
-                    disabled={testStatus === "testing"}
-                    className="text-xs shrink-0"
-                  >
-                    {testStatus === "testing" ? (
-                      <span className="inline-flex animate-spin">
-                        <RefreshCw className="size-3.5" />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleTestOllama}
+                      disabled={testStatus === "testing"}
+                    >
+                      {testStatus === "testing" ? (
+                        <RefreshCw data-icon="inline-start" className="animate-spin" />
+                      ) : (
+                        <Zap data-icon="inline-start" />
+                      )}
+                      Test connection
+                    </Button>
+
+                    {testStatus === "success" ? (
+                      <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                        <CheckCircle2 className="size-3.5" aria-hidden="true" />
+                        Connected
                       </span>
-                    ) : (
-                      <Zap className="size-3.5" />
-                    )}
-                    Test Daemon
-                  </Button>
+                    ) : null}
 
-                  {testStatus === "success" ? (
-                    <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
-                      <CheckCircle2 className="size-3.5" />
-                      Connected (200 OK)
-                    </span>
-                  ) : null}
-
-                  {testStatus === "error" ? (
-                    <span className="inline-flex items-center gap-1 text-xs font-medium text-destructive">
-                      <AlertCircle className="size-3.5" />
-                      Failed to connect
-                    </span>
-                  ) : null}
+                    {testStatus === "error" ? (
+                      <span className="inline-flex items-center gap-1 text-xs font-medium text-destructive">
+                        <AlertCircle className="size-3.5" aria-hidden="true" />
+                        Could not connect
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
                 {errors.ollamaEndpoint ? (
-                  <p className="mt-1 text-xs text-destructive">{errors.ollamaEndpoint.message}</p>
-                ) : null}
-                <p className="mt-1 text-[11px] text-muted-foreground">
-                  Standard Ollama REST API port running on your local machine.
-                </p>
+                  <p className="text-xs text-destructive">{errors.ollamaEndpoint.message}</p>
+                ) : (
+                  <p className="text-[11px] text-muted-foreground">
+                    Usually http://localhost:11434 for Ollama.
+                  </p>
+                )}
               </div>
 
-              {/* Grid: Local LLM Model + Local Embedding Model */}
-              <div className="grid gap-6 sm:grid-cols-2 pt-4 border-t border-border">
-                {/* 1. Local LLM Model */}
-                <div className="space-y-1.5">
+              <div className="grid gap-5 border-t border-border pt-5 sm:grid-cols-2">
+                <div className="flex flex-col gap-1.5">
                   <div className="flex items-center gap-1.5">
-                    <Cpu className="size-3.5 text-primary" />
+                    <Cpu className="size-3.5 text-primary" aria-hidden="true" />
                     <Label htmlFor="ollama-model" className="text-xs font-semibold">
-                      Local LLM Generation Model
+                      Writing model
                     </Label>
                   </div>
                   <Input
                     id="ollama-model"
                     {...register("ollamaModel")}
                     placeholder="llama3.1:8b"
-                    className="font-mono text-xs"
+                    autoComplete="off"
+                    spellCheck={false}
                   />
                   {errors.ollamaModel ? (
-                    <p className="mt-1 text-xs text-destructive">{errors.ollamaModel.message}</p>
-                  ) : null}
-                  <p className="text-[11px] text-muted-foreground">
-                    Drafting and critique inference (e.g. llama3.1:8b, mistral, deepseek-r1:8b).
-                  </p>
+                    <p className="text-xs text-destructive">{errors.ollamaModel.message}</p>
+                  ) : (
+                    <p className="text-[11px] text-muted-foreground">
+                      Used for Write and Review (e.g. llama3.1:8b).
+                    </p>
+                  )}
                 </div>
 
-                {/* 2. Local Embedding Model */}
-                <div className="space-y-1.5">
+                <div className="flex flex-col gap-1.5">
                   <div className="flex items-center gap-1.5">
-                    <Layers className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                    <Layers
+                      className="size-3.5 text-emerald-600 dark:text-emerald-400"
+                      aria-hidden="true"
+                    />
                     <Label htmlFor="ollama-embedding" className="text-xs font-semibold">
-                      Local Vector Embedding Model
+                      Notes model
                     </Label>
                   </div>
                   <Input
                     id="ollama-embedding"
                     {...register("ollamaEmbeddingModel")}
                     placeholder="nomic-embed-text"
-                    className="font-mono text-xs"
+                    autoComplete="off"
+                    spellCheck={false}
                   />
                   {errors.ollamaEmbeddingModel ? (
-                    <p className="mt-1 text-xs text-destructive">{errors.ollamaEmbeddingModel.message}</p>
-                  ) : null}
-                  <p className="text-[11px] text-muted-foreground">
-                    Corpus chunk embeddings (e.g. nomic-embed-text, mxbai-embed-large, all-minilm).
-                  </p>
+                    <p className="text-xs text-destructive">
+                      {errors.ollamaEmbeddingModel.message}
+                    </p>
+                  ) : (
+                    <p className="text-[11px] text-muted-foreground">
+                      Helps Writr find the right notes (e.g. nomic-embed-text).
+                    </p>
+                  )}
                 </div>
               </div>
             </CardContent>
           </Card>
         ) : null}
 
-        {/* PROMPT WORKBENCH */}
-        <Card aria-label="Prompt Workbench" className="rounded-2xl border-border bg-card p-6">
-          <CardHeader className="p-0 pb-6 border-b border-border">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <Card
+          aria-label="Writing style"
+          className="rounded-[var(--radius-xl)] border-border bg-card p-4 shadow-xs sm:p-6"
+        >
+          <CardHeader className="gap-3 border-b border-border p-0 pb-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <div className="flex items-center gap-2">
-                  <Sliders className="size-5 text-primary" />
+                  <Sliders className="size-5 text-primary" aria-hidden="true" />
                   <CardTitle className="text-lg font-bold text-foreground normal-case tracking-normal">
-                    Prompt Workbench
+                    Writing style
                   </CardTitle>
                 </div>
-                <CardDescription className="mt-1 text-xs text-muted-foreground max-w-xl">
-                  Experiment with system prompts, temperature controls, and parameter constraints for custom workflows.
+                <CardDescription className="mt-1 max-w-xl text-xs">
+                  Presets and controls for Write and Review.
                 </CardDescription>
               </div>
 
-              {/* Workflow Selector Segmented Control */}
-              <div className="inline-flex rounded-xl bg-muted/60 p-1 border border-border self-start sm:self-center">
+              <div
+                className="grid w-full grid-cols-2 gap-1 self-start rounded-[var(--radius)] border border-border bg-muted/60 p-1 sm:inline-flex sm:w-auto"
+                role="tablist"
+                aria-label="Style target"
+              >
                 <button
                   type="button"
+                  role="tab"
+                  aria-selected={activeWorkflowTab === "generate"}
                   onClick={() => setActiveWorkflowTab("generate")}
-                  className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition cursor-pointer ${
+                  className={cn(
+                    "flex min-h-9 items-center justify-center gap-2 rounded-[var(--radius-sm)] px-3 py-1.5 text-xs font-semibold transition-colors",
                     activeWorkflowTab === "generate"
                       ? "bg-background text-foreground shadow-xs"
                       : "text-muted-foreground hover:text-foreground"
-                  }`}
+                  )}
                 >
-                  <Wand2 className="size-3.5 text-primary" />
-                  <span>Generation Studio</span>
+                  <Wand2 className="size-3.5 text-primary" aria-hidden="true" />
+                  Write
                 </button>
 
                 <button
                   type="button"
+                  role="tab"
+                  aria-selected={activeWorkflowTab === "critique"}
                   onClick={() => setActiveWorkflowTab("critique")}
-                  className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition cursor-pointer ${
+                  className={cn(
+                    "flex min-h-9 items-center justify-center gap-2 rounded-[var(--radius-sm)] px-3 py-1.5 text-xs font-semibold transition-colors",
                     activeWorkflowTab === "critique"
                       ? "bg-background text-foreground shadow-xs"
                       : "text-muted-foreground hover:text-foreground"
-                  }`}
+                  )}
                 >
-                  <MessageSquareQuote className="size-3.5 text-primary" />
-                  <span>Manuscript Critique</span>
+                  <MessageSquareQuote className="size-3.5 text-primary" aria-hidden="true" />
+                  Review
                 </button>
               </div>
             </div>
           </CardHeader>
 
-          <CardContent className="p-0 pt-6 space-y-6">
-            {/* Presets Strip (Isolated subscription) */}
+          <CardContent className="flex flex-col gap-6 p-0 pt-5">
             <AuthorPresetsStrip
               control={control}
               activeWorkflowTab={activeWorkflowTab}
@@ -1123,7 +1130,6 @@ export default function SettingsPage() {
               presetNotice={presetNotice}
             />
 
-            {/* System Prompt & Persona Editor (Isolated subscription) */}
             <SystemDirectiveCard
               control={control}
               setValue={setValue}
@@ -1131,7 +1137,6 @@ export default function SettingsPage() {
               activeWorkflowTab={activeWorkflowTab}
             />
 
-            {/* Parameter Controls (Isolated subscription) */}
             <InferenceControlsCard
               control={control}
               activeWorkflowTab={activeWorkflowTab}
@@ -1140,29 +1145,35 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
-        {/* Action bar Card */}
-        <Card className="rounded-2xl border-border bg-card/60 p-4">
-          <CardContent className="p-0 flex flex-col sm:flex-row items-center justify-between gap-3">
+        <Card className="rounded-[var(--radius-xl)] border-border bg-card/60 p-4 shadow-xs">
+          <CardContent className="flex flex-col items-stretch justify-between gap-3 p-0 sm:flex-row sm:items-center">
             <p className="text-xs text-muted-foreground">
-              Current system:{" "}
+              Mode:{" "}
               <span className="font-semibold text-foreground">
-                {watchedStorageMode === "local"
-                  ? "Local Stack (Ollama & On-Device DB)"
-                  : "Cloud Stack (Managed Supabase)"}
+                {watchedStorageMode === "local" ? "This device" : "Cloud"}
               </span>
             </p>
 
-            <div className="flex items-center gap-3">
+            <div className="flex w-full flex-col items-stretch gap-3 sm:w-auto sm:flex-row sm:items-center">
               {saveSuccess ? (
-                <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400 animate-in fade-in">
-                  <CheckCircle2 className="size-4" />
-                  Preferences updated!
+                <span className="inline-flex items-center justify-center gap-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                  <CheckCircle2 className="size-3.5" aria-hidden="true" />
+                  Saved
                 </span>
               ) : null}
 
-              <Button type="submit" size="sm" disabled={isSubmitting} className="gap-1.5">
-                <Save className="size-3.5" />
-                Save Preferences
+              <Button type="submit" disabled={isSubmitting} className="w-full sm:w-auto">
+                {isSubmitting ? (
+                  <>
+                    <RefreshCw data-icon="inline-start" className="animate-spin" />
+                    Saving…
+                  </>
+                ) : (
+                  <>
+                    <Save data-icon="inline-start" />
+                    Save settings
+                  </>
+                )}
               </Button>
             </div>
           </CardContent>

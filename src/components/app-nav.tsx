@@ -61,9 +61,9 @@ export function NavigationHeader() {
   const initials = getInitials(displayName, email)
 
   const navItems = [
-    { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-    { label: "Generate", href: "/generate", icon: Sparkles, badge: "New idea" },
-    { label: "Critique", href: "/critique", icon: MessageSquareQuote, badge: "Structure" },
+    { label: "Home", href: "/dashboard", icon: LayoutDashboard },
+    { label: "Write", href: "/generate", icon: Sparkles },
+    { label: "Review", href: "/critique", icon: MessageSquareQuote },
   ]
 
   const handleNavClick = (href: string) => {
@@ -100,23 +100,22 @@ export function NavigationHeader() {
             </Link>
 
             {/* Desktop Navigation links */}
-            <nav className="hidden md:flex items-center gap-1" aria-label="Main Navigation">
+            <nav className="hidden md:flex items-center gap-1" aria-label="Main">
               {navItems.map((item) => {
                 const active = isActive(item.href)
                 return (
-                  <button
+                  <Link
                     key={item.href}
-                    type="button"
-                    onClick={() => handleNavClick(item.href)}
-                    className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer select-none focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring ${
+                    to={item.href}
+                    className={`flex min-h-9 items-center gap-1.5 rounded-[var(--radius)] px-3 py-1.5 text-xs font-medium transition-colors select-none focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring ${
                       active
-                        ? "bg-primary text-primary-foreground font-semibold shadow-xs"
+                        ? "bg-primary font-semibold text-primary-foreground shadow-xs"
                         : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                     }`}
                   >
-                    <item.icon className="size-3.5" />
+                    <item.icon className="size-3.5" aria-hidden="true" />
                     <span>{item.label}</span>
-                  </button>
+                  </Link>
                 )
               })}
             </nav>
@@ -125,9 +124,9 @@ export function NavigationHeader() {
           {/* Right: Search, Dark Mode, Avatar, Mobile Drawer Trigger */}
           <div className="flex items-center gap-2 sm:gap-3">
             {/* Search Box / Command Shortcut */}
-            <div className="hidden lg:flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-2.5 py-1 text-xs text-muted-foreground select-none">
-              <Search className="size-3.5 text-muted-foreground" />
-              <span>Search corpus...</span>
+            <div className="hidden lg:flex items-center gap-2 rounded-[var(--radius)] border border-border bg-muted/40 px-2.5 py-1 text-xs text-muted-foreground select-none">
+              <Search className="size-3.5 text-muted-foreground" aria-hidden="true" />
+              <span>Search notes…</span>
               <kbd className="rounded border border-border bg-background px-1.5 py-0.5 text-[10px] font-mono font-medium text-foreground shadow-2xs">
                 Ctrl K
               </kbd>
@@ -250,17 +249,17 @@ export function NavigationHeader() {
                   </DrawerHeader>
 
                   {/* Orientation snapshot inside mobile drawer */}
-                  <div className="my-3 rounded-lg border border-border bg-muted/30 p-3 text-xs">
+                  <div className="my-3 rounded-[var(--radius)] border border-border bg-muted/30 p-3 text-xs">
                     <div className="flex items-center justify-between">
                       <span className="text-[11px] font-medium text-muted-foreground">Storage</span>
                       <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
-                        <HardDrive className="size-3" />
-                        {isLocal ? "Local DB" : "Cloud Sync"}
+                        <HardDrive className="size-3" aria-hidden="true" />
+                        {isLocal ? "This device" : "Cloud"}
                       </span>
                     </div>
-                    <div className="mt-2 flex items-center justify-between pt-2 border-t border-border/60">
-                      <span className="text-[11px] font-medium text-muted-foreground">Provider</span>
-                      <span className="font-mono text-[11px] text-foreground truncate max-w-[150px]">
+                    <div className="mt-2 flex items-center justify-between border-t border-border/60 pt-2">
+                      <span className="text-[11px] font-medium text-muted-foreground">Model</span>
+                      <span className="max-w-[150px] truncate text-[11px] text-foreground">
                         {activeModelDisplayName}
                       </span>
                     </div>
@@ -282,16 +281,9 @@ export function NavigationHeader() {
                           }`}
                         >
                           <div className="flex items-center gap-2.5">
-                            <item.icon className="size-4 shrink-0" />
+                            <item.icon className="size-4 shrink-0" aria-hidden="true" />
                             <span>{item.label}</span>
                           </div>
-                          {item.badge ? (
-                            <span className={`text-[10px] px-1.5 py-0.5 rounded ${
-                              active ? "bg-primary-foreground/20 text-primary-foreground" : "bg-muted text-muted-foreground"
-                            }`}>
-                              {item.badge}
-                            </span>
-                          ) : null}
                         </button>
                       )
                     })}

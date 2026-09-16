@@ -3,6 +3,7 @@ import { QueryClientProvider } from "@tanstack/react-query"
 import { queryClient } from "@/lib/query-client"
 import { AuthProvider, useAuth } from "@/contexts/auth-context"
 import { SettingsProvider } from "@/contexts/settings-context"
+import { CorpusProvider } from "@/contexts/corpus-context"
 import { ProtectedRoute, PublicOnlyRoute } from "@/components/protected-route"
 import { NavigationHeader } from "@/components/app-nav"
 
@@ -20,9 +21,9 @@ function AppContent() {
   const { isAuthenticated } = useAuth()
 
   return (
-    <div className="min-h-screen bg-white text-neutral-900 transition-colors dark:bg-neutral-950 dark:text-neutral-100">
+    <div className="min-h-dvh bg-background text-foreground">
       {isAuthenticated ? <NavigationHeader /> : null}
-      <main>
+      <main className="pb-[env(safe-area-inset-bottom)]">
         <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route
@@ -101,9 +102,11 @@ export function App() {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <SettingsProvider>
-          <BrowserRouter>
-            <AppContent />
-          </BrowserRouter>
+          <CorpusProvider>
+            <BrowserRouter>
+              <AppContent />
+            </BrowserRouter>
+          </CorpusProvider>
         </SettingsProvider>
       </AuthProvider>
     </QueryClientProvider>
