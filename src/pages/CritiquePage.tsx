@@ -18,6 +18,7 @@ import {
 } from "lucide-react"
 
 import { useSettings, DEFAULT_CRITIQUE_CONFIG } from "@/contexts/settings-context"
+import { reviewDocumentApi } from "@/lib/api-client"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -171,11 +172,48 @@ export default function CritiquePage() {
     reportRef.current.scrollIntoView({ behavior: "smooth", block: "start" })
   }, [report])
 
-  const handleRunCritique = () => {
+  const handleRunCritique = async () => {
     if (!manuscriptInput.trim() || isAnalyzing) return
     setIsAnalyzing(true)
 
-    window.setTimeout(() => {
+    const lensInstruction = `Review focus: ${activeLens.name}. ${activeLens.description}`
+    const instruction = `${config.systemPrompt}\n\n${lensInstruction}`
+
+    try {
+      const apiResult = await reviewDocumentApi({
+        instruction,
+        target_text: manuscriptInput.trim(),
+        target_stored: false,
+        temperature: config.temperature,
+        max_tokens: config.maxTokens,
+        context_chunks: config.contextChunks,
+        system_prompt: config.systemPrompt,
+      })
+
+      if (apiResult.report_text || apiResult.recommendations?.length || apiResult.score_overall != null) {
+        setReport({
+          scoreOverall: apiResult.score_overall ?? 80,
+          pacingScore: apiResult.pacing_score ?? 80,
+          voiceScore: apiResult.voice_score ?? 80,
+          frictionScore: apiResult.friction_score ?? 80,
+          pacingSummary: "Pace and clarity from your Review focus.",
+          voiceSummary: "Voice checked against your notes.",
+          frictionSummary: "Friction points called out below.",
+          recommendations: (apiResult.recommendations || []).map((r) => ({
+            category: r.category,
+            severity: r.severity,
+            issue: r.issue,
+            revisedExample: r.revised_example,
+          })),
+          notesUsed:
+            typeof apiResult.report_text === "string" && apiResult.report_text
+              ? apiResult.report_text.slice(0, 160)
+              : `Checked against ${config.contextChunks} sections from your notes library.`,
+        })
+        return
+      }
+
+      // Mock / empty backend: local simulation for UI work
       const generatedReport: CritiqueReport = {
         scoreOverall: activeLensId === "cadence-rhythm" ? 82 : 88,
         pacingScore: 84,
@@ -214,8 +252,12 @@ export default function CritiquePage() {
       }
 
       setReport(generatedReport)
+    } catch (err) {
+      console.error(err)
+      // Keep prior report; surface via existing UI only if we add toast later
+    } finally {
       setIsAnalyzing(false)
-    }, 700)
+    }
   }
 
   const handleCopyReport = async () => {

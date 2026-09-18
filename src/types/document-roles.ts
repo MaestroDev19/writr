@@ -5,6 +5,8 @@ export type EmbeddingStatus = 'idle' | 'queued' | 'embedding' | 'ready' | 'error
 export interface TargetDocumentItem {
   id: string;
   file?: File;
+  /** Session draft text for /cloud/run — never uploaded as a note. */
+  text?: string;
   name: string;
   size: string;
   role: 'target';

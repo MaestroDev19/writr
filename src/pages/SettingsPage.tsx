@@ -13,15 +13,14 @@ import { cn } from "cn"
 
 import {
   useSettings,
-  type StorageMode,
   DEFAULT_GENERATE_CONFIG,
   DEFAULT_CRITIQUE_CONFIG,
 } from "@/contexts/settings-context"
-import { Switch } from "@/components/ui/switch"
+import type { LlmSource, ModelProvider } from "@/types/settings"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
 import {
   Card,
   CardContent,
@@ -31,18 +30,10 @@ import {
 } from "@/components/ui/card"
 
 import {
-  HardDrive,
   Cloud,
-  Cpu,
-  ShieldCheck,
   CheckCircle2,
-  AlertCircle,
   Save,
-  Server,
   RefreshCw,
-  Layers,
-  Sparkles,
-  Zap,
   Sliders,
   Wand2,
   MessageSquareQuote,
@@ -51,6 +42,10 @@ import {
   Check,
   BookOpen,
   SlidersHorizontal,
+  KeyRound,
+  Sparkles,
+  Eye,
+  EyeOff,
 } from "lucide-react"
 
 interface WorkflowPreset {
@@ -218,11 +213,20 @@ const workflowPromptConfigSchema = z.object({
   contextChunks: z.number().int().min(1).max(10),
 })
 
+const PROVIDERS: { id: ModelProvider; name: string; hint: string; modelPlaceholder: string }[] = [
+  { id: "gemini", name: "Gemini", hint: "Google AI Studio", modelPlaceholder: "gemini-2.5-pro" },
+  { id: "groq", name: "Groq", hint: "console.groq.com", modelPlaceholder: "llama-3.3-70b-versatile" },
+  { id: "openai", name: "OpenAI", hint: "platform.openai.com", modelPlaceholder: "gpt-4o-mini" },
+  { id: "openrouter", name: "OpenRouter", hint: "openrouter.ai", modelPlaceholder: "openai/gpt-4o-mini" },
+]
+
+const WRITR_DEFAULT_MODEL = "gemini-2.5-pro"
+
 const settingsFormSchema = z.object({
-  storageMode: z.enum(["default", "local"]),
-  ollamaEndpoint: z.string().min(1, "Ollama service endpoint is required"),
-  ollamaModel: z.string().min(1, "Local LLM model is required"),
-  ollamaEmbeddingModel: z.string().min(1, "Embedding model is required"),
+  llmSource: z.enum(["default", "byok"]),
+  modelProvider: z.enum(["gemini", "groq", "openai", "openrouter"]),
+  byokModel: z.string(),
+  apiKey: z.string(),
   generateConfig: workflowPromptConfigSchema,
   critiqueConfig: workflowPromptConfigSchema,
 })
@@ -671,32 +675,220 @@ const InferenceControlsCard = React.memo(function InferenceControlsCard({
 })
 
 /* -------------------------------------------------------------------------- */
+/*                         WRITING MODEL (BYOK UI ONLY)                       */
+/* -------------------------------------------------------------------------- */
+
+interface WritingModelCardProps {
+  control: Control<SettingsFormValues>
+  setValue: UseFormSetValue<SettingsFormValues>
+  keyConfigured: boolean
+  keyLast4: string
+}
+
+const WritingModelCard = React.memo(function WritingModelCard({
+  control,
+  setValue,
+  keyConfigured,
+  keyLast4,
+}: WritingModelCardProps) {
+  const llmSource = useWatch({ control, name: "llmSource" }) as LlmSource
+  const modelProvider = useWatch({ control, name: "modelProvider" }) as ModelProvider
+  const [showKey, setShowKey] = React.useState(false)
+  const selected = PROVIDERS.find((p) => p.id === modelProvider) ?? PROVIDERS[0]
+
+  return (
+    <Card
+      aria-labelledby="writing-model-heading"
+      className="rounded-[var(--radius-xl)] border-border bg-card p-4 shadow-xs sm:p-6"
+    >
+      <CardHeader className="gap-1 border-b border-border p-0 pb-5">
+        <div className="flex items-center gap-2">
+          <KeyRound className="size-5 text-primary" aria-hidden="true" />
+          <CardTitle
+            id="writing-model-heading"
+            className="text-lg font-bold text-foreground normal-case tracking-normal"
+          >
+            Writing model
+          </CardTitle>
+        </div>
+        <CardDescription className="max-w-xl text-xs">
+          Use Writr&apos;s model, or your own API key for Write and Review. Notes search always
+          uses Writr&apos;s embedding model.
+        </CardDescription>
+      </CardHeader>
+
+      <CardContent className="flex flex-col gap-5 p-0 pt-5">
+        <div
+          className="grid gap-2 sm:grid-cols-2"
+          role="radiogroup"
+          aria-label="Whose writing model"
+        >
+          <button
+            type="button"
+            role="radio"
+            aria-checked={llmSource === "default"}
+            onClick={() => setValue("llmSource", "default", { shouldDirty: true })}
+            className={cn(
+              "flex min-h-20 flex-col items-start gap-1 rounded-[var(--radius)] border p-3.5 text-left transition-colors",
+              llmSource === "default"
+                ? "border-primary bg-primary/5 shadow-xs"
+                : "border-border bg-background hover:bg-muted/40"
+            )}
+          >
+            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-foreground">
+              <Sparkles className="size-3.5 text-primary" aria-hidden="true" />
+              Writr&apos;s model
+            </span>
+            <span className="text-[11px] leading-relaxed text-muted-foreground">
+              Included. No key needed. Currently {WRITR_DEFAULT_MODEL}.
+            </span>
+          </button>
+
+          <button
+            type="button"
+            role="radio"
+            aria-checked={llmSource === "byok"}
+            onClick={() => setValue("llmSource", "byok", { shouldDirty: true })}
+            className={cn(
+              "flex min-h-20 flex-col items-start gap-1 rounded-[var(--radius)] border p-3.5 text-left transition-colors",
+              llmSource === "byok"
+                ? "border-primary bg-primary/5 shadow-xs"
+                : "border-border bg-background hover:bg-muted/40"
+            )}
+          >
+            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-foreground">
+              <KeyRound className="size-3.5 text-primary" aria-hidden="true" />
+              My API key
+            </span>
+            <span className="text-[11px] leading-relaxed text-muted-foreground">
+              Gemini, Groq, OpenAI, or OpenRouter. You pay that provider.
+            </span>
+          </button>
+        </div>
+
+        {llmSource === "byok" ? (
+          <div className="flex flex-col gap-5 rounded-[var(--radius)] border border-border bg-muted/20 p-4">
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs font-semibold">Provider</Label>
+              <div
+                className="grid grid-cols-2 gap-1.5 sm:grid-cols-4"
+                role="group"
+                aria-label="API provider"
+              >
+                {PROVIDERS.map((provider) => (
+                  <button
+                    key={provider.id}
+                    type="button"
+                    onClick={() =>
+                      setValue("modelProvider", provider.id, { shouldDirty: true })
+                    }
+                    className={cn(
+                      "min-h-9 rounded-[var(--radius-sm)] border px-2 py-1.5 text-xs font-semibold transition-colors",
+                      modelProvider === provider.id
+                        ? "border-primary bg-background text-foreground shadow-xs"
+                        : "border-border bg-background/80 text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    {provider.name}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] text-muted-foreground">Key from {selected.hint}.</p>
+            </div>
+
+            <Controller
+              control={control}
+              name="apiKey"
+              render={({ field, fieldState }) => (
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="byok-api-key" className="text-xs font-semibold">
+                    API key
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      id="byok-api-key"
+                      type={showKey ? "text" : "password"}
+                      autoComplete="off"
+                      spellCheck={false}
+                      placeholder={
+                        keyConfigured && keyLast4
+                          ? `Saved key ending in ${keyLast4}`
+                          : "Paste your key"
+                      }
+                      className="pr-10"
+                      {...field}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowKey((v) => !v)}
+                      className="absolute top-1/2 right-2 -translate-y-1/2 rounded-sm p-1 text-muted-foreground hover:text-foreground"
+                      aria-label={showKey ? "Hide API key" : "Show API key"}
+                    >
+                      {showKey ? (
+                        <EyeOff className="size-4" aria-hidden="true" />
+                      ) : (
+                        <Eye className="size-4" aria-hidden="true" />
+                      )}
+                    </button>
+                  </div>
+                  {fieldState.error ? (
+                    <p className="text-xs text-destructive">{fieldState.error.message}</p>
+                  ) : (
+                    <p className="text-[11px] text-muted-foreground">
+                      {keyConfigured
+                        ? "Leave blank to keep the saved key. The secret is not stored in this browser."
+                        : "Saved with your account later. Not used for notes search."}
+                    </p>
+                  )}
+                </div>
+              )}
+            />
+
+            <Controller
+              control={control}
+              name="byokModel"
+              render={({ field }) => (
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="byok-model" className="text-xs font-semibold">
+                    Model name <span className="font-normal text-muted-foreground">(optional)</span>
+                  </Label>
+                  <Input
+                    id="byok-model"
+                    autoComplete="off"
+                    spellCheck={false}
+                    placeholder={selected.modelPlaceholder}
+                    {...field}
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Leave empty to use that provider&apos;s default.
+                  </p>
+                </div>
+              )}
+            />
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
+  )
+})
+
+/* -------------------------------------------------------------------------- */
 /*                               MAIN COMPONENT                               */
 /* -------------------------------------------------------------------------- */
 
 export default function SettingsPage() {
-  const { settings, updateSettings } = useSettings()
+  const { settings, updateSettings, activeModelDisplayName } = useSettings()
 
-  const [testStatus, setTestStatus] = React.useState<"idle" | "testing" | "success" | "error">("idle")
   const [saveSuccess, setSaveSuccess] = React.useState(false)
   const [presetNotice, setPresetNotice] = React.useState<string | null>(null)
   const [activeWorkflowTab, setActiveWorkflowTab] = React.useState<"generate" | "critique">("generate")
 
-  // Auto-dismiss save notification
   React.useEffect(() => {
     if (!saveSuccess) return
     const id = window.setTimeout(() => setSaveSuccess(false), 2500)
     return () => window.clearTimeout(id)
   }, [saveSuccess])
 
-  // Auto-dismiss test connection status
-  React.useEffect(() => {
-    if (testStatus !== "success" && testStatus !== "error") return
-    const id = window.setTimeout(() => setTestStatus("idle"), 3000)
-    return () => window.clearTimeout(id)
-  }, [testStatus])
-
-  // Auto-dismiss preset notification
   React.useEffect(() => {
     if (!presetNotice) return
     const id = window.setTimeout(() => setPresetNotice(null), 3000)
@@ -704,74 +896,59 @@ export default function SettingsPage() {
   }, [presetNotice])
 
   const {
-    register,
     control,
     handleSubmit,
     setValue,
     getValues,
     reset,
-    formState: { isSubmitting, errors },
+    setError,
+    formState: { isSubmitting },
   } = useForm<SettingsFormValues>({
     resolver: zodResolver(settingsFormSchema),
     defaultValues: {
-      storageMode: settings.storageMode,
-      ollamaEndpoint: settings.ollamaEndpoint,
-      ollamaModel: settings.ollamaModel,
-      ollamaEmbeddingModel: settings.ollamaEmbeddingModel || "nomic-embed-text",
+      llmSource: settings.llmSource || "default",
+      modelProvider: settings.modelProvider || "gemini",
+      byokModel: settings.byokModel || "",
+      apiKey: "",
       generateConfig: settings.generateConfig || DEFAULT_GENERATE_CONFIG,
       critiqueConfig: settings.critiqueConfig || DEFAULT_CRITIQUE_CONFIG,
     },
   })
 
-  // Synchronize form values whenever external settings change
   React.useEffect(() => {
     reset({
-      storageMode: settings.storageMode,
-      ollamaEndpoint: settings.ollamaEndpoint,
-      ollamaModel: settings.ollamaModel,
-      ollamaEmbeddingModel: settings.ollamaEmbeddingModel || "nomic-embed-text",
+      llmSource: settings.llmSource || "default",
+      modelProvider: settings.modelProvider || "gemini",
+      byokModel: settings.byokModel || "",
+      apiKey: "",
       generateConfig: settings.generateConfig || DEFAULT_GENERATE_CONFIG,
       critiqueConfig: settings.critiqueConfig || DEFAULT_CRITIQUE_CONFIG,
     })
   }, [settings, reset])
 
-  // Subscriptions isolated only to what parent page needs
-  const watchedStorageMode = useWatch({ control, name: "storageMode" }) ?? settings.storageMode
-  const watchedOllamaModel = useWatch({ control, name: "ollamaModel" }) ?? settings.ollamaModel
-
   const activePresets = activeWorkflowTab === "generate" ? GENERATE_PRESETS : CRITIQUE_PRESETS
 
-  // Test local Ollama connection
-  const handleTestOllama = () => {
-    setTestStatus("testing")
-    window.setTimeout(() => {
-      setTestStatus("success")
-    }, 650)
-  }
-
-  // Save all settings via react-hook-form
   const onSubmit = (data: SettingsFormValues) => {
+    if (data.llmSource === "byok" && !settings.byokKeyConfigured && !data.apiKey.trim()) {
+      setError("apiKey", { message: "Paste your API key to use your own model." })
+      return
+    }
+
+    const trimmedKey = data.apiKey.trim()
     updateSettings({
-      storageMode: data.storageMode,
-      modelProvider: data.storageMode === "local" ? "ollama" : "gemini",
-      ollamaEndpoint: data.ollamaEndpoint,
-      ollamaModel: data.ollamaModel,
-      ollamaEmbeddingModel: data.ollamaEmbeddingModel,
+      storageMode: "default",
+      llmSource: data.llmSource,
+      modelProvider: data.modelProvider,
+      byokModel: data.byokModel.trim(),
+      byokKeyConfigured: data.llmSource === "byok" ? settings.byokKeyConfigured || Boolean(trimmedKey) : settings.byokKeyConfigured,
+      byokKeyLast4: trimmedKey ? trimmedKey.slice(-4) : settings.byokKeyLast4,
       generateConfig: data.generateConfig,
       critiqueConfig: data.critiqueConfig,
     })
+    setValue("apiKey", "")
     setSaveSuccess(true)
   }
 
-  const handleModeToggle = React.useCallback(
-    (checked: boolean) => {
-      const nextMode: StorageMode = checked ? "local" : "default"
-      setValue("storageMode", nextMode, { shouldDirty: true, shouldValidate: true })
-    },
-    [setValue]
-  )
-
-  // Load a preset into current workflow
   const handleApplyPreset = React.useCallback(
     (preset: WorkflowPreset) => {
       const targetKey = activeWorkflowTab === "generate" ? "generateConfig" : "critiqueConfig"
@@ -781,13 +958,11 @@ export default function SettingsPage() {
       setValue(`${targetKey}.topP`, preset.topP, { shouldDirty: true })
       setValue(`${targetKey}.frequencyPenalty`, preset.frequencyPenalty, { shouldDirty: true })
       setValue(`${targetKey}.contextChunks`, preset.contextChunks, { shouldDirty: true })
-
       setPresetNotice(`Applied: ${preset.name}`)
     },
     [activeWorkflowTab, setValue]
   )
 
-  // Reset current workflow to system defaults
   const handleResetToDefault = React.useCallback(() => {
     const targetKey = activeWorkflowTab === "generate" ? "generateConfig" : "critiqueConfig"
     const defaultConf =
@@ -803,265 +978,34 @@ export default function SettingsPage() {
           Settings
         </h1>
         <p className="text-pretty text-sm text-muted-foreground">
-          Choose where Writr runs, then tune how it writes and reviews.
+          Tune how Writr writes and reviews.
         </p>
       </header>
 
       <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6">
-        <Card
-          aria-labelledby="mode-heading"
-          className="rounded-[var(--radius-xl)] border-border bg-card p-4 shadow-xs sm:p-6"
-        >
-          <CardHeader className="gap-4 border-b border-border p-0 pb-5">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <div className="flex items-center gap-2">
-                  {watchedStorageMode === "local" ? (
-                    <HardDrive
-                      className="size-5 text-emerald-600 dark:text-emerald-400"
-                      aria-hidden="true"
-                    />
-                  ) : (
-                    <Cloud className="size-5 text-primary" aria-hidden="true" />
-                  )}
-                  <CardTitle
-                    id="mode-heading"
-                    className="text-lg font-bold text-foreground normal-case tracking-normal"
-                  >
-                    Where Writr runs
-                  </CardTitle>
-                </div>
-                <CardDescription className="mt-1 max-w-xl text-xs">
-                  Cloud is simplest. This device keeps everything private on your computer.
-                </CardDescription>
+        <Card className="rounded-[var(--radius-xl)] border-border bg-card p-4 shadow-xs sm:p-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-[var(--radius)] bg-primary/10 text-primary">
+                <Cloud className="size-5" aria-hidden="true" />
               </div>
-
-              <div
-                className="flex flex-wrap items-center gap-2 self-start rounded-[var(--radius)] border border-border bg-muted/40 p-2 sm:self-center"
-                role="group"
-                aria-label="Storage mode"
-              >
-                <Label
-                  htmlFor="master-mode-toggle"
-                  className={cn(
-                    "cursor-pointer text-xs font-semibold",
-                    watchedStorageMode === "default"
-                      ? "text-primary"
-                      : "text-muted-foreground"
-                  )}
-                >
-                  Cloud
-                </Label>
-
-                <Switch
-                  id="master-mode-toggle"
-                  checked={watchedStorageMode === "local"}
-                  onCheckedChange={handleModeToggle}
-                  aria-label="Switch between Cloud and This device"
-                />
-
-                <Label
-                  htmlFor="master-mode-toggle"
-                  className={cn(
-                    "cursor-pointer text-xs font-semibold",
-                    watchedStorageMode === "local"
-                      ? "text-emerald-600 dark:text-emerald-400"
-                      : "text-muted-foreground"
-                  )}
-                >
-                  This device
-                </Label>
+              <div>
+                <h2 className="text-sm font-bold text-foreground">Cloud</h2>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Notes and writing run in the cloud. No local setup.
+                </p>
               </div>
             </div>
-          </CardHeader>
-
-          <CardContent className="p-0 pt-5">
-            {watchedStorageMode === "default" ? (
-              <div className="flex flex-col gap-3 rounded-[var(--radius)] border border-primary/20 bg-primary/5 p-4 text-xs sm:p-5">
-                <div className="flex items-center gap-2 font-semibold text-primary">
-                  <Sparkles className="size-4" aria-hidden="true" />
-                  <span>Cloud is on</span>
-                </div>
-                <p className="leading-relaxed text-muted-foreground">
-                  Notes and writing run online. No local setup needed.
-                </p>
-                <div className="grid gap-2 border-t border-primary/10 pt-3 sm:grid-cols-3">
-                  <div className="rounded-[var(--radius-sm)] border border-border/60 bg-background/80 p-3">
-                    <span className="block font-semibold text-foreground">Notes</span>
-                    <span className="text-[11px] text-muted-foreground">Saved in the cloud</span>
-                  </div>
-                  <div className="rounded-[var(--radius-sm)] border border-border/60 bg-background/80 p-3">
-                    <span className="block font-semibold text-foreground">Writing help</span>
-                    <span className="text-[11px] text-muted-foreground">Managed for you</span>
-                  </div>
-                  <div className="rounded-[var(--radius-sm)] border border-border/60 bg-background/80 p-3">
-                    <span className="block font-semibold text-foreground">Sync</span>
-                    <span className="text-[11px] text-muted-foreground">Works across devices</span>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="flex flex-col gap-3 rounded-[var(--radius)] border border-emerald-500/30 bg-emerald-500/5 p-4 text-xs sm:p-5">
-                <div className="flex items-center gap-2 font-semibold text-emerald-700 dark:text-emerald-400">
-                  <ShieldCheck className="size-4" aria-hidden="true" />
-                  <span>This device is on</span>
-                </div>
-                <p className="leading-relaxed text-muted-foreground">
-                  Notes and writing stay on your computer. You need a local model app running (Ollama).
-                </p>
-                <div className="grid gap-2 border-t border-emerald-500/20 pt-3 sm:grid-cols-3">
-                  <div className="rounded-[var(--radius-sm)] border border-border/60 bg-background/80 p-3">
-                    <span className="block font-semibold text-foreground">Notes</span>
-                    <span className="text-[11px] text-muted-foreground">Saved on this computer</span>
-                  </div>
-                  <div className="rounded-[var(--radius-sm)] border border-border/60 bg-background/80 p-3">
-                    <span className="block font-semibold text-foreground">Writing model</span>
-                    <span className="truncate text-[11px] text-muted-foreground">
-                      {watchedOllamaModel}
-                    </span>
-                  </div>
-                  <div className="rounded-[var(--radius-sm)] border border-border/60 bg-background/80 p-3">
-                    <span className="block font-semibold text-foreground">Privacy</span>
-                    <span className="text-[11px] text-muted-foreground">Stays offline</span>
-                  </div>
-                </div>
-              </div>
-            )}
-          </CardContent>
+            <Badge variant="secondary">{activeModelDisplayName}</Badge>
+          </div>
         </Card>
 
-        {watchedStorageMode === "local" ? (
-          <Card
-            aria-labelledby="local-models-heading"
-            className="rounded-[var(--radius-xl)] border-border bg-card p-4 shadow-xs sm:p-6"
-          >
-            <CardHeader className="gap-1 border-b border-border p-0 pb-5">
-              <div className="flex items-center gap-2">
-                <Server
-                  className="size-4 text-emerald-600 dark:text-emerald-400"
-                  aria-hidden="true"
-                />
-                <CardTitle
-                  id="local-models-heading"
-                  className="text-lg font-bold text-foreground normal-case tracking-normal"
-                >
-                  Local models
-                </CardTitle>
-              </div>
-              <CardDescription className="text-xs">
-                Point Writr at your local model app, then pick writing and notes models.
-              </CardDescription>
-            </CardHeader>
-
-            <CardContent className="flex flex-col gap-6 p-0 pt-5">
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="ollama-endpoint" className="text-xs font-semibold">
-                  App address
-                </Label>
-                <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center">
-                  <Input
-                    id="ollama-endpoint"
-                    {...register("ollamaEndpoint")}
-                    placeholder="http://localhost:11434"
-                    className="w-full sm:max-w-md"
-                    autoComplete="off"
-                    spellCheck={false}
-                  />
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={handleTestOllama}
-                      disabled={testStatus === "testing"}
-                    >
-                      {testStatus === "testing" ? (
-                        <RefreshCw data-icon="inline-start" className="animate-spin" />
-                      ) : (
-                        <Zap data-icon="inline-start" />
-                      )}
-                      Test connection
-                    </Button>
-
-                    {testStatus === "success" ? (
-                      <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
-                        <CheckCircle2 className="size-3.5" aria-hidden="true" />
-                        Connected
-                      </span>
-                    ) : null}
-
-                    {testStatus === "error" ? (
-                      <span className="inline-flex items-center gap-1 text-xs font-medium text-destructive">
-                        <AlertCircle className="size-3.5" aria-hidden="true" />
-                        Could not connect
-                      </span>
-                    ) : null}
-                  </div>
-                </div>
-                {errors.ollamaEndpoint ? (
-                  <p className="text-xs text-destructive">{errors.ollamaEndpoint.message}</p>
-                ) : (
-                  <p className="text-[11px] text-muted-foreground">
-                    Usually http://localhost:11434 for Ollama.
-                  </p>
-                )}
-              </div>
-
-              <div className="grid gap-5 border-t border-border pt-5 sm:grid-cols-2">
-                <div className="flex flex-col gap-1.5">
-                  <div className="flex items-center gap-1.5">
-                    <Cpu className="size-3.5 text-primary" aria-hidden="true" />
-                    <Label htmlFor="ollama-model" className="text-xs font-semibold">
-                      Writing model
-                    </Label>
-                  </div>
-                  <Input
-                    id="ollama-model"
-                    {...register("ollamaModel")}
-                    placeholder="llama3.1:8b"
-                    autoComplete="off"
-                    spellCheck={false}
-                  />
-                  {errors.ollamaModel ? (
-                    <p className="text-xs text-destructive">{errors.ollamaModel.message}</p>
-                  ) : (
-                    <p className="text-[11px] text-muted-foreground">
-                      Used for Write and Review (e.g. llama3.1:8b).
-                    </p>
-                  )}
-                </div>
-
-                <div className="flex flex-col gap-1.5">
-                  <div className="flex items-center gap-1.5">
-                    <Layers
-                      className="size-3.5 text-emerald-600 dark:text-emerald-400"
-                      aria-hidden="true"
-                    />
-                    <Label htmlFor="ollama-embedding" className="text-xs font-semibold">
-                      Notes model
-                    </Label>
-                  </div>
-                  <Input
-                    id="ollama-embedding"
-                    {...register("ollamaEmbeddingModel")}
-                    placeholder="nomic-embed-text"
-                    autoComplete="off"
-                    spellCheck={false}
-                  />
-                  {errors.ollamaEmbeddingModel ? (
-                    <p className="text-xs text-destructive">
-                      {errors.ollamaEmbeddingModel.message}
-                    </p>
-                  ) : (
-                    <p className="text-[11px] text-muted-foreground">
-                      Helps Writr find the right notes (e.g. nomic-embed-text).
-                    </p>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ) : null}
+        <WritingModelCard
+          control={control}
+          setValue={setValue}
+          keyConfigured={settings.byokKeyConfigured}
+          keyLast4={settings.byokKeyLast4}
+        />
 
         <Card
           aria-label="Writing style"
@@ -1148,10 +1092,8 @@ export default function SettingsPage() {
         <Card className="rounded-[var(--radius-xl)] border-border bg-card/60 p-4 shadow-xs">
           <CardContent className="flex flex-col items-stretch justify-between gap-3 p-0 sm:flex-row sm:items-center">
             <p className="text-xs text-muted-foreground">
-              Mode:{" "}
-              <span className="font-semibold text-foreground">
-                {watchedStorageMode === "local" ? "This device" : "Cloud"}
-              </span>
+              Writer:{" "}
+              <span className="font-semibold text-foreground">{activeModelDisplayName}</span>
             </p>
 
             <div className="flex w-full flex-col items-stretch gap-3 sm:w-auto sm:flex-row sm:items-center">

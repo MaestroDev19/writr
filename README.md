@@ -2,6 +2,8 @@
 
 A writing companion for authors. Upload notes, rewrite story drafts, and get feedback on scenes, scripts, story bibles, character sheets, and other story documents.
 
+Writr is **cloud-only**: writers sign in with Supabase; notes and Write/Review go through your hosted FastAPI. There is no Ollama, no “This device” mode, and no local app address.
+
 ---
 
 ## Table of contents
@@ -23,10 +25,10 @@ A writing companion for authors. Upload notes, rewrite story drafts, and get fee
 
 Writr helps writers keep research close while they write and revise:
 
-1. **Notes library** (Dashboard) – upload character sheets, lore, research, and style notes. Writr prepares them so they can be used later.
-2. **Write** – open a story draft for this session and ask Writr to rewrite it using your notes.
-3. **Review** – paste any story document (scene, script, story bible, character notes, and more) and get focused feedback.
-4. **Settings** – choose Cloud or This device, then tune Write and Review style.
+1. **Notes library** (Dashboard) – upload character sheets, lore, research, and style notes. Notes are saved to the writer’s account and prepared in Supabase (pgvector).
+2. **Write** – open a story draft for this session and ask Writr to rewrite it using your notes. The draft is sent only with the Write request — never stored as a library note.
+3. **Review** – paste any story document (scene, script, story bible, character notes, and more) and get focused feedback. Pasted text is request-only.
+4. **Settings** – tune Write and Review writing style (presets, instructions, creativity, length, notes used).
 
 The UI is written for non-technical writers: plain labels, clear empty states, and mobile-friendly layouts.
 
@@ -36,9 +38,11 @@ The UI is written for non-technical writers: plain labels, clear empty states, a
 
 | What | Where | Embedded in notes library? |
 | :--- | :--- | :--- |
-| Reference notes (lore, research, character sheets) | Dashboard → Notes library | Yes – prepared for Write and Review |
-| Story draft (active manuscript for rewrite) | Write | No – stays in the Write session only |
-| Text to critique (scene, script, bible, etc.) | Review (paste-in) | No – reviewed in place, grounded by your notes |
+| Reference notes (lore, research, character sheets) | Dashboard → Notes library → `POST /cloud/references/upload` | Yes – prepared for Write and Review |
+| Story draft (active manuscript for rewrite) | Write → `POST /cloud/run` | No – session only (`target_stored: false`) |
+| Text to critique (scene, script, bible, etc.) | Review (paste-in) → `POST /cloud/run` | No – reviewed in place |
+
+Model API keys (Gemini / Groq / OpenAI) live on the backend. The browser never stores them. Every API call sends the Supabase access token as `Authorization: Bearer …`.
 
 `/ingestion` redirects to `/dashboard#notes` (notes live on the Dashboard).
 
@@ -54,9 +58,9 @@ The UI is written for non-technical writers: plain labels, clear empty states, a
 
 ### Home (Dashboard)
 - Notes library with drag-and-drop or **Choose files**
-- Progress while notes are prepared (“Preparing notes…”)
+- Progress while notes are prepared (“Preparing notes…” — embeddings in Supabase)
 - Shortcuts to **Write** and **Review**
-- Cloud vs this-device status and model label
+- Always **Cloud** status and hosted model label
 
 ### Write (`/generate`)
 - Upload one story file for the session (not added to the notes library)
@@ -74,10 +78,12 @@ The UI is written for non-technical writers: plain labels, clear empty states, a
 - Score meters and concrete “Try this” suggestions
 
 ### Settings (`/settings`)
-- **Where Writr runs**: Cloud or This device
-- Local mode: app address, writing model, notes model, connection test
+- Cloud-only: notes and writing run in the cloud (no local setup)
 - Writing style for Write and Review: presets, instructions, creativity, length, notes used
 - Advanced options (word variety, avoid repeats) behind **More options**
+- Account / sign out via the nav menu
+
+Embedding model is not a user setting — the backend pins it (e.g. Gemini embeddings).
 
 ### Navigation
 - Desktop: Home · Write · Review
@@ -92,7 +98,8 @@ The UI is written for non-technical writers: plain labels, clear empty states, a
 | Layer | Technology |
 | :--- | :--- |
 | App | React 19, Vite 8, TypeScript |
-| Auth & data | Supabase (Auth, Postgres, Storage, RLS) |
+| Auth & data | Supabase (Auth, Postgres, Storage, RLS, pgvector) |
+| API | Hosted FastAPI (`VITE_API_URL`) |
 | Data fetching | TanStack Query v5 |
 | Routing | React Router DOM v7 |
 | UI | Tailwind CSS v4, shadcn/ui (Base UI), Lucide icons |
@@ -118,31 +125,20 @@ write/
 │   │   ├── corpus-context.tsx  # Notes library state + prepare pipeline
 │   │   └── settings-context.tsx
 │   ├── lib/
-│   │   ├── api-client.ts       # Upload / rewrite API helpers (incl. mock)
-│   │   ├── supabase.ts
-│   │   └── utils.ts
+│   │   ├── api-client.ts       # JWT + /cloud/* calls
+│   │   └── supabase.ts
 │   ├── pages/
-│   │   ├── DashboardPage.tsx   # Home + notes library
-│   │   ├── GeneratePage.tsx    # Write
-│   │   ├── CritiquePage.tsx    # Review
-│   │   ├── SettingsPage.tsx
-│   │   ├── IngestionPage.tsx   # Redirects to /dashboard#notes
-│   │   └── ...
 │   ├── types/
-│   │   ├── document-roles.ts   # target vs reference document types
-│   │   ├── auth.ts
-│   │   └── settings.ts
-│   ├── App.tsx
-│   ├── index.css               # Theme tokens, radius, OKLCH palette
-│   └── main.tsx
-├── components.json             # shadcn config
-├── package.json
+│   └── ...
+├── .env                        # VITE_SUPABASE_* + VITE_API_URL
 └── README.md
 ```
 
 ---
 
 ## Database & storage (Supabase)
+
+Notes embeddings are stored via the FastAPI `/cloud` routes into Supabase pgvector. Auth profiles and avatars:
 
 ### Profiles table
 
@@ -262,6 +258,7 @@ create policy "Authenticated users can delete avatar"
 
 - [Node.js](https://nodejs.org/) 20+ (or a compatible package runner)
 - A [Supabase](https://supabase.com/) project
+- A hosted FastAPI backend (or local FastAPI while developing)
 
 ### Environment
 
@@ -270,9 +267,16 @@ Create a `.env` in the project root:
 ```env
 VITE_SUPABASE_URL=https://<your-project-ref>.supabase.co
 VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_<your-key>
+VITE_API_URL=https://<your-hosted-fastapi>
 ```
 
-Optional: `VITE_API_URL` for a real documents/rewrite API. Without it, upload and rewrite use local mock responses.
+Local frontend + local backend while developing:
+
+```env
+VITE_API_URL=http://127.0.0.1:8000
+```
+
+`VITE_API_URL` is required for live uploads and Write/Review. Set `VITE_USE_MOCK=true` to force mock responses for UI-only work (even if `VITE_API_URL` is present). Do not use mocks in production.
 
 Legacy `VITE_SUPABASE_ANON_KEY` is still accepted as a fallback.
 
@@ -328,7 +332,7 @@ graph TD
 | `/dashboard` | Home, notes library (`#notes`) |
 | `/generate` | Write – session story draft + rewrite |
 | `/critique` | Review – feedback on any story document |
-| `/settings` | Cloud / device mode + writing style |
+| `/settings` | Cloud + writing style |
 | `/ingestion` | Redirect to notes library |
 
 ---

@@ -31,7 +31,7 @@ import {
   MessageSquareQuote,
   LayoutDashboard,
   Menu,
-  HardDrive,
+  Cloud,
 } from "lucide-react"
 import { useSettings } from "@/contexts/settings-context"
 
@@ -48,7 +48,7 @@ function getInitials(name?: string | null, email?: string | null): string {
 export function NavigationHeader() {
   const { theme, setTheme } = useTheme()
   const { profile, user, signOut } = useAuth()
-  const { isLocal, activeModelDisplayName } = useSettings()
+  const { activeModelDisplayName } = useSettings()
   const location = useLocation()
   const navigate = useNavigate()
   const [isDrawerOpen, setIsDrawerOpen] = React.useState(false)
@@ -251,10 +251,10 @@ export function NavigationHeader() {
                   {/* Orientation snapshot inside mobile drawer */}
                   <div className="my-3 rounded-[var(--radius)] border border-border bg-muted/30 p-3 text-xs">
                     <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-medium text-muted-foreground">Storage</span>
-                      <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
-                        <HardDrive className="size-3" aria-hidden="true" />
-                        {isLocal ? "This device" : "Cloud"}
+                      <span className="text-[11px] font-medium text-muted-foreground">Mode</span>
+                      <span className="inline-flex items-center gap-1 text-[11px] font-medium text-primary">
+                        <Cloud className="size-3" aria-hidden="true" />
+                        Cloud
                       </span>
                     </div>
                     <div className="mt-2 flex items-center justify-between border-t border-border/60 pt-2">
@@ -306,7 +306,7 @@ export function NavigationHeader() {
                         <span>App Settings</span>
                       </div>
                       <span className="text-[10px] text-muted-foreground">
-                        {isLocal ? "Local DB" : "Cloud"}
+                        Cloud
                       </span>
                     </button>
                   </div>

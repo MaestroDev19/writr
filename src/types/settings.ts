@@ -1,5 +1,6 @@
-export type StorageMode = "default" | "local"
-export type ModelProvider = "ollama" | "gemini" | "groq" | "openai" | "openrouter"
+export type StorageMode = "default"
+export type LlmSource = "default" | "byok"
+export type ModelProvider = "gemini" | "groq" | "openai" | "openrouter"
 
 export interface WorkflowPromptConfig {
   systemPrompt: string
@@ -10,18 +11,18 @@ export interface WorkflowPromptConfig {
   contextChunks: number
 }
 
+/** Client-side settings only. The raw API key is never persisted here. */
 export interface AppSettings {
   storageMode: StorageMode
+  /** Writr-hosted model vs the author's own provider key. */
+  llmSource: LlmSource
   modelProvider: ModelProvider
-  ollamaEndpoint: string
-  ollamaModel: string
-  ollamaEmbeddingModel: string
-  geminiApiKey: string
+  /** Display / preference for hosted chat model; server may override. */
   geminiModel: string
-  openAiApiKey: string
-  openRouterApiKey: string
-  localDbPath: string
+  /** Optional chat model id when using a personal key. */
+  byokModel: string
+  byokKeyConfigured: boolean
+  byokKeyLast4: string
   generateConfig?: WorkflowPromptConfig
   critiqueConfig?: WorkflowPromptConfig
 }
-

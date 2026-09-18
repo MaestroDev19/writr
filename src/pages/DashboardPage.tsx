@@ -15,7 +15,7 @@ import {
   Trash2,
   ArrowUpRight,
   Plus,
-  HardDrive,
+  Cloud,
   Settings,
   BookOpen,
 } from "lucide-react"
@@ -31,7 +31,7 @@ type LibraryState = "ready" | "updating" | "needs-update"
 
 export default function DashboardPage() {
   const { user, profile } = useAuth()
-  const { isLocal, activeModelDisplayName } = useSettings()
+  const { activeModelDisplayName } = useSettings()
   const {
     referenceDocuments,
     totalFiles,
@@ -164,8 +164,8 @@ export default function DashboardPage() {
                       : "Notes ready"}
                 </span>
                 <Badge variant="outline">
-                  <HardDrive data-icon="inline-start" />
-                  {isLocal ? "On this device" : "Cloud"}
+                  <Cloud data-icon="inline-start" />
+                  Cloud
                 </Badge>
               </div>
 
@@ -411,7 +411,7 @@ export default function DashboardPage() {
               Add research notes
             </h3>
             <p id="notes-upload-help" className="max-w-sm text-xs text-muted-foreground">
-              PDF, Word, text, EPUB, or Markdown. On phones, use Choose files.
+              PDF, Word, text, EPUB, or Markdown. Notes are saved to your account.
             </p>
           </div>
           <Button

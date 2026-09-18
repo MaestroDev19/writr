@@ -121,11 +121,12 @@ export default function GeneratePage() {
     const file = confirmedFiles[0]
     if (!file) return
 
+    let text = ""
     let wordCount: number
     let characterCount: number
 
     try {
-      const text = await file.text()
+      text = await file.text()
       wordCount = text.trim().split(/\s+/).filter(Boolean).length
       characterCount = text.length
     } catch {
@@ -136,6 +137,7 @@ export default function GeneratePage() {
     setTargetDraft({
       id: `target-${Date.now()}`,
       file,
+      text,
       name: file.name,
       size: formatFileSize(file.size),
       role: "target",
@@ -164,7 +166,15 @@ export default function GeneratePage() {
           max_tokens: config.maxTokens,
         },
         targetDraft.name,
-        referenceDocuments.map((rf) => rf.name)
+        referenceDocuments.map((rf) => rf.name),
+        {
+          targetText: targetDraft.text,
+          targetFile: targetDraft.file,
+          systemPrompt: config.systemPrompt,
+          topP: config.topP,
+          frequencyPenalty: config.frequencyPenalty,
+          contextChunks: config.contextChunks,
+        }
       )
 
       setOutputResult(response)
