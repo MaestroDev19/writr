@@ -217,14 +217,15 @@ const PROVIDERS: { id: ModelProvider; name: string; hint: string; modelPlacehold
   { id: "gemini", name: "Gemini", hint: "Google AI Studio", modelPlaceholder: "gemini-2.5-pro" },
   { id: "groq", name: "Groq", hint: "console.groq.com", modelPlaceholder: "llama-3.3-70b-versatile" },
   { id: "openai", name: "OpenAI", hint: "platform.openai.com", modelPlaceholder: "gpt-4o-mini" },
-  { id: "openrouter", name: "OpenRouter", hint: "openrouter.ai", modelPlaceholder: "openai/gpt-4o-mini" },
+  { id: "claude", name: "Claude", hint: "console.anthropic.com", modelPlaceholder: "claude-sonnet-4-5" },
+  { id: "deepseek", name: "DeepSeek", hint: "platform.deepseek.com", modelPlaceholder: "deepseek-chat" },
 ]
 
 const WRITR_DEFAULT_MODEL = "gemini-2.5-pro"
 
 const settingsFormSchema = z.object({
   llmSource: z.enum(["default", "byok"]),
-  modelProvider: z.enum(["gemini", "groq", "openai", "openrouter"]),
+  modelProvider: z.enum(["gemini", "groq", "openai", "claude", "deepseek"]),
   byokModel: z.string(),
   apiKey: z.string(),
   generateConfig: workflowPromptConfigSchema,
@@ -761,7 +762,7 @@ const WritingModelCard = React.memo(function WritingModelCard({
               My API key
             </span>
             <span className="text-[11px] leading-relaxed text-muted-foreground">
-              Gemini, Groq, OpenAI, or OpenRouter. You pay that provider.
+              Gemini, Groq, OpenAI, Claude, or DeepSeek. You pay that provider.
             </span>
           </button>
         </div>
@@ -771,7 +772,7 @@ const WritingModelCard = React.memo(function WritingModelCard({
             <div className="flex flex-col gap-1.5">
               <Label className="text-xs font-semibold">Provider</Label>
               <div
-                className="grid grid-cols-2 gap-1.5 sm:grid-cols-4"
+                className="grid grid-cols-2 gap-1.5 sm:grid-cols-3"
                 role="group"
                 aria-label="API provider"
               >

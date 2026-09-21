@@ -1,6 +1,6 @@
 export type StorageMode = "default"
 export type LlmSource = "default" | "byok"
-export type ModelProvider = "gemini" | "groq" | "openai" | "openrouter"
+export type ModelProvider = "gemini" | "groq" | "openai" | "claude" | "deepseek"
 
 export interface WorkflowPromptConfig {
   systemPrompt: string

@@ -39,14 +39,15 @@ const DEFAULT_SETTINGS: AppSettings = {
   critiqueConfig: DEFAULT_CRITIQUE_CONFIG,
 }
 
-const HOSTED_PROVIDERS: ModelProvider[] = ["gemini", "groq", "openai", "openrouter"]
+const HOSTED_PROVIDERS: ModelProvider[] = ["gemini", "groq", "openai", "claude", "deepseek"]
 
 function sanitizeStoredSettings(raw: Record<string, unknown>): AppSettings {
   const parsedProvider = raw.modelProvider as string | undefined
+  const migratedProvider = parsedProvider === "openrouter" ? "claude" : parsedProvider
   const modelProvider: ModelProvider =
-    parsedProvider === "ollama" || !HOSTED_PROVIDERS.includes(parsedProvider as ModelProvider)
+    migratedProvider === "ollama" || !HOSTED_PROVIDERS.includes(migratedProvider as ModelProvider)
       ? "gemini"
-      : (parsedProvider as ModelProvider)
+      : (migratedProvider as ModelProvider)
 
   const llmSource: LlmSource = raw.llmSource === "byok" ? "byok" : "default"
 
@@ -129,7 +130,10 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     if (settings.modelProvider === "openai") {
       return ownModel ? `Your key — OpenAI (${ownModel})` : "Your key — OpenAI"
     }
-    return ownModel ? `Your key — OpenRouter (${ownModel})` : "Your key — OpenRouter"
+    if (settings.modelProvider === "claude") {
+      return ownModel ? `Your key — Claude (${ownModel})` : "Your key — Claude"
+    }
+    return ownModel ? `Your key — DeepSeek (${ownModel})` : "Your key — DeepSeek"
   }, [
     settings.llmSource,
     settings.modelProvider,
