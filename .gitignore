@@ -32,3 +32,5 @@ dist-ssr
 .env.production
 .env.test
 .env.development
+
+.cursor/
