@@ -33,4 +33,4 @@ dist-ssr
 .env.test
 .env.development
 
-.cursor/
+.cursor/*
