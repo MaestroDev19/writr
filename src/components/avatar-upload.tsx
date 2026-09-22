@@ -3,6 +3,7 @@ import { CloudUpload, Camera, Paperclip, X, AlertCircle } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { cn } from "cn"
+import { formatFileSize } from "@/lib/format-file-size"
 
 interface AvatarUploadProps {
   value?: File | null
@@ -11,14 +12,6 @@ interface AvatarUploadProps {
   error?: string
   disabled?: boolean
   className?: string
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return "0 B"
-  const k = 1024
-  const sizes = ["B", "KB", "MB"]
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`
 }
 
 function getInitials(name?: string): string {
@@ -56,7 +49,7 @@ export function AvatarUpload({
 
   const validateAndProcess = useCallback(
     (file: File) => {
-      if (!["image/jpeg", "image/png", "image/webp", "image/gif"].includes(file.type)) {
+      if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
         setErrorMessage("Please select a JPEG, PNG, or WebP image.")
         return
       }
@@ -68,7 +61,7 @@ export function AvatarUpload({
       setErrorMessage(null)
       onChange(file)
 
-      // Simulated upload progress animation like image-upload-shadcn
+      // Simulated upload progress animation
       setUploadProgress(0)
       let current = 0
       const timer = setInterval(() => {
@@ -148,7 +141,7 @@ export function AvatarUpload({
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/jpeg,image/png,image/webp,image/gif"
+        accept="image/jpeg,image/png,image/webp"
         className="sr-only"
         onChange={handleFileChange}
         disabled={disabled}
@@ -191,7 +184,7 @@ export function AvatarUpload({
                   {value.name}
                 </span>
                 <span className="shrink-0 text-[11px] text-muted-foreground">
-                  ({formatBytes(value.size)})
+                  ({formatFileSize(value.size)})
                 </span>
               </div>
 

@@ -1,32 +1,11 @@
 import { z } from "zod"
 
-export interface AvatarAttachment {
-  file: File
-  previewUrl: string
-  name: string
-  size: number
-  type: string
-}
-
-export interface AuthUser {
-  id: string
-  email: string
-  fullName: string
-  avatarUrl?: string
-}
-
 export interface UserProfile {
   id: string
   author_name: string | null
   email: string | null
   avatar_url: string | null
   updated_at: string | null
-}
-
-export interface AuthResponse {
-  user: AuthUser | null
-  error?: string
-  success: boolean
 }
 
 export const loginSchema = z.object({
@@ -60,10 +39,8 @@ export const signupSchema = z.object({
     .refine(
       (file) =>
         !file ||
-        ["image/jpeg", "image/png", "image/webp", "image/gif"].includes(
-          file.type
-        ),
-      "Supported formats: JPEG, PNG, WebP, GIF"
+        ["image/jpeg", "image/png", "image/webp"].includes(file.type),
+      "Supported formats: JPEG, PNG, WebP"
     ),
 })
 

@@ -34,3 +34,4 @@ dist-ssr
 .env.development
 
 .cursor/*
+skills-lock.json

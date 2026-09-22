@@ -40,35 +40,9 @@ import {
   UploadConfirmDialog,
   type PendingUpload,
 } from "@/components/upload-confirm-dialog"
-import {
-  generateRevisionsApi,
-  formatFileSize,
-} from "@/lib/api-client"
-
-function getCreativityLabel(temp: number) {
-  if (temp <= 0.3) {
-    return {
-      label: "Careful",
-      description: "Stays close to your instructions.",
-    }
-  }
-  if (temp <= 0.6) {
-    return {
-      label: "Balanced",
-      description: "Natural tone with steady voice.",
-    }
-  }
-  if (temp <= 0.85) {
-    return {
-      label: "Expressive",
-      description: "Richer detail and varied rhythm.",
-    }
-  }
-  return {
-    label: "Bold",
-    description: "More creative freedom with ideas.",
-  }
-}
+import { generateRevisionsApi } from "@/lib/api-client"
+import { formatFileSize } from "@/lib/format-file-size"
+import { getCreativityLabel } from "@/lib/creativity-label"
 
 const PROMPT_SUGGESTIONS = [
   "Deepen character feelings",
@@ -165,9 +139,9 @@ export default function GeneratePage() {
           temperature: config.temperature,
           max_tokens: config.maxTokens,
         },
-        targetDraft.name,
-        referenceDocuments.map((rf) => rf.name),
         {
+          targetFileName: targetDraft.name,
+          referenceFileNames: referenceDocuments.map((rf) => rf.name),
           targetText: targetDraft.text,
           targetFile: targetDraft.file,
           systemPrompt: config.systemPrompt,
@@ -209,7 +183,7 @@ export default function GeneratePage() {
           Improve your story
         </h1>
         <p className="max-w-2xl text-pretty text-sm text-muted-foreground leading-relaxed">
-          Open a chapter, say what to change, and Writr rewrites it using your notes from the Dashboard.
+          Open a chapter, say what to change, and Writr rewrites it using your notes from Home.
         </p>
       </header>
 
@@ -358,7 +332,7 @@ export default function GeneratePage() {
           )}
         </div>
 
-        {/* Notes from Dashboard (read-only + link) */}
+        {/* Notes from Home (read-only + link) */}
         <div className="flex flex-col gap-4 rounded-[var(--radius-xl)] border border-border bg-card p-4 shadow-xs sm:p-5">
           <div className="flex flex-col gap-3 border-b border-border pb-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex min-w-0 items-start gap-3">
@@ -373,7 +347,7 @@ export default function GeneratePage() {
                   </Badge>
                 </div>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  Character sheets, lore, and research from Dashboard.
+                  Character sheets, lore, and research from Home.
                 </p>
               </div>
             </div>
@@ -398,7 +372,7 @@ export default function GeneratePage() {
             {referenceDocuments.length === 0 ? (
               <div className="flex flex-col items-center gap-3 px-4 py-8 text-center">
                 <p className="text-xs text-muted-foreground">
-                  No notes yet. Add them on the Dashboard first.
+                  No notes yet. Add them on Home first.
                 </p>
                 <Button
                   type="button"

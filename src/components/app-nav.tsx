@@ -23,7 +23,6 @@ import {
 import {
   Sun,
   Moon,
-  User,
   Settings,
   LogOut,
   Search,
@@ -84,19 +83,14 @@ export function NavigationHeader() {
             <Link
               to="/dashboard"
               className="flex items-center gap-2.5 select-none cursor-pointer group focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring rounded-md"
-              aria-label="Writr Dashboard"
+              aria-label="Writr Home"
             >
               <div className="flex size-7 items-center justify-center rounded-full bg-primary text-primary-foreground font-black text-xs shadow-xs transition-transform group-hover:scale-105">
                 W
               </div>
-              <div className="flex flex-col leading-none">
-                <span className="text-base font-bold tracking-tight text-foreground">
-                  Writr
-                </span>
-                <span className="text-[10px] text-muted-foreground hidden sm:block">
-                  Writer Studio
-                </span>
-              </div>
+              <span className="text-base font-bold tracking-tight text-foreground">
+                Writr
+              </span>
             </Link>
 
             {/* Desktop Navigation links */}
@@ -189,8 +183,8 @@ export function NavigationHeader() {
                       onClick={() => navigate("/dashboard")}
                       className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-foreground hover:bg-accent hover:text-accent-foreground"
                     >
-                      <User className="size-3.5 text-muted-foreground" />
-                      <span>Account Portal</span>
+                      <LayoutDashboard className="size-3.5 text-muted-foreground" />
+                      <span>Home</span>
                     </DropdownMenuItem>
 
                     <DropdownMenuItem
@@ -198,7 +192,7 @@ export function NavigationHeader() {
                       className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-foreground hover:bg-accent hover:text-accent-foreground"
                     >
                       <Settings className="size-3.5 text-muted-foreground" />
-                      <span>App Settings</span>
+                      <span>Settings</span>
                     </DropdownMenuItem>
                   </DropdownMenuGroup>
 
@@ -288,7 +282,7 @@ export function NavigationHeader() {
                       )
                     })}
 
-                    {/* App Settings Drawer Link */}
+                    {/* Settings drawer link */}
                     <button
                       type="button"
                       onClick={() => {
@@ -303,7 +297,7 @@ export function NavigationHeader() {
                     >
                       <div className="flex items-center gap-2.5">
                         <Settings className="size-4 shrink-0" />
-                        <span>App Settings</span>
+                        <span>Settings</span>
                       </div>
                       <span className="text-[10px] text-muted-foreground">
                         Cloud

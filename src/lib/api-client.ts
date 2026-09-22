@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase"
+import { formatFileSize } from "@/lib/format-file-size"
 import type {
   DocumentRole,
   GenerateRevisionsPayload,
@@ -105,44 +106,58 @@ export interface CloudWriteRequest {
   system_prompt?: string
 }
 
+/** Optional session-draft inputs for Write (`/cloud/run`). */
+export interface CloudWriteOptions {
+  targetFileName?: string
+  /** Used only by the mock path for simulated grounding labels. */
+  referenceFileNames?: string[]
+  targetText?: string
+  targetFile?: File
+  systemPrompt?: string
+  topP?: number
+  frequencyPenalty?: number
+  contextChunks?: number
+}
+
 /**
  * Write / rewrite: session draft only. Never persists into the notes library.
  */
 export async function generateRevisionsApi(
   payload: GenerateRevisionsPayload,
-  targetFileName?: string,
-  referenceFileNames: string[] = [],
-  extras?: {
-    targetText?: string
-    targetFile?: File
-    systemPrompt?: string
-    topP?: number
-    frequencyPenalty?: number
-    contextChunks?: number
-  }
+  options: CloudWriteOptions = {}
 ): Promise<GenerateRevisionsResponse> {
   assertBackendConfigured()
   const startTime = performance.now()
+  const {
+    targetFileName,
+    referenceFileNames = [],
+    targetText,
+    targetFile,
+    systemPrompt,
+    topP,
+    frequencyPenalty,
+    contextChunks,
+  } = options
 
   if (isLiveApi()) {
     const body: CloudWriteRequest = {
       instruction: payload.prompt,
       target_file_id: payload.target_file_id,
-      target_text: extras?.targetText,
+      target_text: targetText,
       target_filename: targetFileName,
       temperature: payload.temperature,
       max_tokens: payload.max_tokens,
-      top_p: extras?.topP,
-      frequency_penalty: extras?.frequencyPenalty,
-      context_chunks: extras?.contextChunks,
-      system_prompt: extras?.systemPrompt,
+      top_p: topP,
+      frequency_penalty: frequencyPenalty,
+      context_chunks: contextChunks,
+      system_prompt: systemPrompt,
     }
 
     // Prefer JSON when we have text; if only a File, send multipart.
-    if (extras?.targetFile && !extras.targetText) {
+    if (targetFile && !targetText) {
       const formData = new FormData()
       formData.append("instruction", payload.prompt)
-      formData.append("file", extras.targetFile)
+      formData.append("file", targetFile)
       if (targetFileName) formData.append("target_filename", targetFileName)
       if (payload.target_file_id) formData.append("target_file_id", payload.target_file_id)
       if (payload.temperature != null) {
@@ -235,12 +250,6 @@ export async function reviewDocumentApi(
 
   // Mock: empty payload so UI can keep local simulation
   return {}
-}
-
-export function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
 function mockUpload(

@@ -44,7 +44,7 @@ The UI is written for non-technical writers: plain labels, clear empty states, a
 
 Model API keys (Gemini / Groq / OpenAI) live on the backend. The browser never stores them. Every API call sends the Supabase access token as `Authorization: Bearer …`.
 
-`/ingestion` redirects to `/dashboard#notes` (notes live on the Dashboard).
+`/ingestion` redirects to `/dashboard#notes` (compat route; notes live on the Dashboard).
 
 ---
 
@@ -209,12 +209,12 @@ values (
   'avatars',
   true,
   5242880,
-  array['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+  array['image/jpeg', 'image/png', 'image/webp']
 )
 on conflict (id) do update set
   public = true,
   file_size_limit = 5242880,
-  allowed_mime_types = array['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+  allowed_mime_types = array['image/jpeg', 'image/png', 'image/webp'];
 
 create policy "Public Access for avatars"
   on storage.objects for select

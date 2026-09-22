@@ -13,7 +13,6 @@ import ForgotPasswordPage from "@/pages/ForgotPasswordPage"
 import DashboardPage from "@/pages/DashboardPage"
 import GeneratePage from "@/pages/GeneratePage"
 import CritiquePage from "@/pages/CritiquePage"
-import IngestionPage from "@/pages/IngestionPage"
 import SettingsPage from "@/pages/SettingsPage"
 import NotFoundPage from "@/pages/NotFoundPage"
 
@@ -78,7 +77,7 @@ function AppContent() {
             path="/ingestion"
             element={
               <ProtectedRoute>
-                <IngestionPage />
+                <Navigate to="/dashboard#notes" replace />
               </ProtectedRoute>
             }
           />

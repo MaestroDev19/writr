@@ -1,6 +1,7 @@
-export type StorageMode = "default"
+import type { ModelProvider } from "@/lib/model-providers"
+
+export type { ModelProvider }
 export type LlmSource = "default" | "byok"
-export type ModelProvider = "gemini" | "groq" | "openai" | "claude" | "deepseek"
 
 export interface WorkflowPromptConfig {
   systemPrompt: string
@@ -13,12 +14,11 @@ export interface WorkflowPromptConfig {
 
 /** Client-side settings only. The raw API key is never persisted here. */
 export interface AppSettings {
-  storageMode: StorageMode
   /** Writr-hosted model vs the author's own provider key. */
   llmSource: LlmSource
   modelProvider: ModelProvider
-  /** Display / preference for hosted chat model; server may override. */
-  geminiModel: string
+  /** Display / preference for Writr-hosted chat model; server may override. */
+  hostedModel: string
   /** Optional chat model id when using a personal key. */
   byokModel: string
   byokKeyConfigured: boolean

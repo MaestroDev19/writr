@@ -1,6 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 import * as React from "react"
-import { uploadFileApi, formatFileSize } from "@/lib/api-client"
+import { uploadFileApi } from "@/lib/api-client"
+import { formatFileSize } from "@/lib/format-file-size"
 import type { ReferenceDocumentItem } from "@/types/document-roles"
 
 const INITIAL_REFERENCE_DOCUMENTS: ReferenceDocumentItem[] = [

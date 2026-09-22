@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import type { DocumentRole } from "@/types/document-roles"
-import { formatFileSize } from "@/lib/api-client"
+import { formatFileSize } from "@/lib/format-file-size"
 import {
   FileText,
   FileCode2,

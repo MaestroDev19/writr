@@ -1,9 +1,13 @@
 /* eslint-disable react-refresh/only-export-components */
 import * as React from "react"
 import type { AppSettings, LlmSource, ModelProvider, WorkflowPromptConfig } from "@/types/settings"
+import {
+  WRITR_HOSTED_MODEL,
+  formatActiveModelDisplayName,
+  isModelProvider,
+} from "@/lib/model-providers"
 
 export type { AppSettings, LlmSource, ModelProvider, WorkflowPromptConfig }
-export type { StorageMode } from "@/types/settings"
 
 export const DEFAULT_GENERATE_CONFIG: WorkflowPromptConfig = {
   systemPrompt:
@@ -28,10 +32,9 @@ export const DEFAULT_CRITIQUE_CONFIG: WorkflowPromptConfig = {
 const STORAGE_KEY = "writr_settings_v1"
 
 const DEFAULT_SETTINGS: AppSettings = {
-  storageMode: "default",
   llmSource: "default",
   modelProvider: "gemini",
-  geminiModel: "gemini-2.5-pro",
+  hostedModel: WRITR_HOSTED_MODEL,
   byokModel: "",
   byokKeyConfigured: false,
   byokKeyLast4: "",
@@ -39,30 +42,33 @@ const DEFAULT_SETTINGS: AppSettings = {
   critiqueConfig: DEFAULT_CRITIQUE_CONFIG,
 }
 
-const HOSTED_PROVIDERS: ModelProvider[] = ["gemini", "groq", "openai", "claude", "deepseek"]
-
 function sanitizeStoredSettings(raw: Record<string, unknown>): AppSettings {
   const parsedProvider = raw.modelProvider as string | undefined
   const migratedProvider = parsedProvider === "openrouter" ? "claude" : parsedProvider
   const modelProvider: ModelProvider =
-    migratedProvider === "ollama" || !HOSTED_PROVIDERS.includes(migratedProvider as ModelProvider)
+    migratedProvider === "ollama" || !migratedProvider || !isModelProvider(migratedProvider)
       ? "gemini"
-      : (migratedProvider as ModelProvider)
+      : migratedProvider
 
   const llmSource: LlmSource = raw.llmSource === "byok" ? "byok" : "default"
 
+  const legacyHosted =
+    typeof raw.geminiModel === "string" && raw.geminiModel ? raw.geminiModel : undefined
+  const hostedModel =
+    typeof raw.hostedModel === "string" && raw.hostedModel
+      ? raw.hostedModel
+      : legacyHosted ?? DEFAULT_SETTINGS.hostedModel
+
   return {
-    storageMode: "default",
     llmSource,
     modelProvider,
-    geminiModel:
-      typeof raw.geminiModel === "string" && raw.geminiModel
-        ? raw.geminiModel
-        : DEFAULT_SETTINGS.geminiModel,
+    hostedModel,
     byokModel: typeof raw.byokModel === "string" ? raw.byokModel : "",
     byokKeyConfigured: Boolean(raw.byokKeyConfigured),
     byokKeyLast4:
-      typeof raw.byokKeyLast4 === "string" ? raw.byokKeyLast4.replace(/[^a-zA-Z0-9]/g, "").slice(-4) : "",
+      typeof raw.byokKeyLast4 === "string"
+        ? raw.byokKeyLast4.replace(/[^a-zA-Z0-9]/g, "").slice(-4)
+        : "",
     generateConfig: {
       ...DEFAULT_GENERATE_CONFIG,
       ...((raw.generateConfig as Partial<WorkflowPromptConfig>) || {}),
@@ -116,30 +122,21 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     })
   }, [])
 
-  const activeModelDisplayName = React.useMemo(() => {
-    if (settings.llmSource !== "byok") {
-      return `Writr — ${settings.geminiModel || "gemini-2.5-pro"}`
-    }
-    const ownModel = settings.byokModel.trim()
-    if (settings.modelProvider === "gemini") {
-      return ownModel ? `Your key — Gemini (${ownModel})` : "Your key — Gemini"
-    }
-    if (settings.modelProvider === "groq") {
-      return ownModel ? `Your key — Groq (${ownModel})` : "Your key — Groq"
-    }
-    if (settings.modelProvider === "openai") {
-      return ownModel ? `Your key — OpenAI (${ownModel})` : "Your key — OpenAI"
-    }
-    if (settings.modelProvider === "claude") {
-      return ownModel ? `Your key — Claude (${ownModel})` : "Your key — Claude"
-    }
-    return ownModel ? `Your key — DeepSeek (${ownModel})` : "Your key — DeepSeek"
-  }, [
-    settings.llmSource,
-    settings.modelProvider,
-    settings.geminiModel,
-    settings.byokModel,
-  ])
+  const activeModelDisplayName = React.useMemo(
+    () =>
+      formatActiveModelDisplayName({
+        llmSource: settings.llmSource,
+        modelProvider: settings.modelProvider,
+        hostedModel: settings.hostedModel,
+        byokModel: settings.byokModel,
+      }),
+    [
+      settings.llmSource,
+      settings.modelProvider,
+      settings.hostedModel,
+      settings.byokModel,
+    ]
+  )
 
   const value = React.useMemo(
     () => ({
