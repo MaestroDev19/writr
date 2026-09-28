@@ -25,22 +25,12 @@ from supabase_auth.types import User
 from core.config import get_settings
 from utils.log import logger
 
-
-def _get_supabase_credentials() -> tuple[str, str]:
-    """Read project URL + publishable key from Settings.
-
-    Raises ValueError early if either is missing so callers fail clearly
-    instead of making a broken network request.
-    """
-    settings = get_settings()
-    url = settings.supabase_url
-    key = settings.supabase_api_key  # publishable_key OR legacy anon_key
-    if not url or not key:
-        logger.error("Supabase URL or publishable key is missing in Settings.")
-        raise ValueError(
-            "SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY must be set in environment variables."
-        )
-    return url, key
+settings = get_settings()
+def _get_supabase_credentials( role: str = "admin") -> tuple[str, str]:
+    if role == "admin":
+        return settings.get_supabase_admin_key()
+    else:
+        return settings.get_supabase_api_key()
 
 
 # ---------------------------------------------------------------------------
