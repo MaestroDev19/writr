@@ -1,8 +1,8 @@
 from fastapi import APIRouter
 
-from .cloud import router as cloud_router
+from .v1.upload import UploadRouter
 
 router = APIRouter()
-router.include_router(cloud_router)
+router.include_router(UploadRouter)
 
-__all__ = ["router"]
+__all__ = ["router", "UploadRouter"]

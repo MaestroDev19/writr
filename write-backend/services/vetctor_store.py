@@ -60,7 +60,14 @@ class VectorStoreError(Exception):
 
     Callers catch this and map it to an HTTP error response.
     Message is client-safe; details belong in logs only.
+    ``document_id`` is set when a parent note already exists (partial ingest).
     """
+
+    def __init__(
+        self, message: str, *, document_id: str | None = None
+    ) -> None:
+        super().__init__(message)
+        self.document_id = document_id
 
 
 # ---------------------------------------------------------------------------
@@ -209,6 +216,77 @@ class WritrVectorStore:
             status,
         )
 
+    async def delete_reference_document(
+        self,
+        *,
+        document_id: str,
+        owner_id: str,
+        raise_on_error: bool = True,
+    ) -> bool:
+        """Delete parent note; ``ON DELETE CASCADE`` removes its chunks.
+
+        Soft-retry cleanup: drop failed/processing stub so next attempt
+        creates a fresh parent instead of leaving orphans.
+        """
+        if not document_id or not str(document_id).strip():
+            raise VectorStoreError("Document id is required.")
+        if not owner_id or not str(owner_id).strip():
+            raise VectorStoreError("Owner is required.")
+
+        doc_ref = _log_ref(document_id)
+        owner_ref = _log_ref(owner_id)
+        try:
+            res = await (
+                self.supabase_client.table(self.document_table_name)
+                .delete()
+                .eq("id", document_id)
+                .eq("owner_id", owner_id)
+                .execute()
+            )
+        except APIError as e:
+            logger.exception(
+                "Reference document delete failed doc_ref=%s owner_ref=%s "
+                "db_code=%s",
+                doc_ref,
+                owner_ref,
+                e.code,
+            )
+            if raise_on_error:
+                raise VectorStoreError(
+                    "Could not delete reference document.",
+                    document_id=document_id,
+                ) from e
+            return False
+        except Exception as e:
+            logger.exception(
+                "Reference document delete failed unexpectedly "
+                "doc_ref=%s owner_ref=%s",
+                doc_ref,
+                owner_ref,
+            )
+            if raise_on_error:
+                raise VectorStoreError(
+                    "Could not delete reference document.",
+                    document_id=document_id,
+                ) from e
+            return False
+
+        deleted = bool(res.data)
+        if deleted:
+            logger.info(
+                "Deleted reference document doc_ref=%s owner_ref=%s",
+                doc_ref,
+                owner_ref,
+            )
+        else:
+            logger.warning(
+                "Reference document delete matched no rows "
+                "doc_ref=%s owner_ref=%s",
+                doc_ref,
+                owner_ref,
+            )
+        return deleted
+
     # ------------------------------------------------------------------
     # Create parent document (starts as pending)
     # ------------------------------------------------------------------
@@ -246,7 +324,7 @@ class WritrVectorStore:
             )
             res = await (
                 self.supabase_client.table(self.document_table_name)
-                .insert(row)
+                .upsert(row)
                 .execute()
             )
         except APIError as e:
@@ -357,8 +435,12 @@ class WritrVectorStore:
                 raise_on_error=False,
             )
             if isinstance(exc, VectorStoreError):
+                if exc.document_id is None:
+                    exc.document_id = document_id
                 raise exc
-            raise VectorStoreError(client_message) from exc
+            raise VectorStoreError(
+                client_message, document_id=document_id
+            ) from exc
 
         try:
             # --- 3. pending → processing ---
@@ -408,7 +490,7 @@ class WritrVectorStore:
             )
             res = await (
                 self.supabase_client.table(self.chunk_table_name)
-                .insert(rows)
+                .upsert(rows)
                 .execute()
             )
 

@@ -5,7 +5,7 @@ What this module provides:
   1. Sync / async clients signed with the *publishable* (anon) key
   2. A trusted *service* async client signed with the secret key (bypasses RLS)
   3. A per-request *user* async client that forwards the caller's JWT (RLS applies)
-  4. ``get_current_user`` — validate Bearer JWT and return the Supabase User
+  4. ``get_current_user`` / ``get_current_user_id`` — validate Bearer JWT
 
 Rule of thumb:
   - User-facing reads/writes that should respect RLS → AsyncUserSupabaseDep
@@ -26,11 +26,15 @@ from core.config import get_settings
 from utils.log import logger
 
 settings = get_settings()
-def _get_supabase_credentials( role: str = "admin") -> tuple[str, str]:
-    if role == "admin":
-        return settings.get_supabase_admin_key()
-    else:
-        return settings.get_supabase_api_key()
+
+
+def _get_supabase_credentials(role: str = "publishable") -> tuple[str, str]:
+    """Return ``(url, key)``; ``role="admin"`` selects the secret key."""
+    url = settings.supabase_url
+    key = settings.supabase_admin_key if role == "admin" else settings.supabase_api_key
+    if not url or not key:
+        raise ValueError(f"Supabase URL and {role} key must be set in environment variables.")
+    return url, key
 
 
 # ---------------------------------------------------------------------------
@@ -176,6 +180,30 @@ def get_current_user(
 
 CurrentUserDep = Annotated[User, Depends(get_current_user)]
 CurrentUser = CurrentUserDep  # alias kept for older imports
+
+
+def get_current_user_id(user: CurrentUserDep) -> str:
+    """Return the authenticated user's UUID string.
+
+    Thin wrapper over ``get_current_user`` for routes / services that only
+    need ``owner_id`` (enqueue, vector store, etc.).
+
+    Usage:
+        @router.post("/notes")
+        async def create_note(user_id: CurrentUserIdDep):
+            ...
+    """
+    if not user.id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authenticated user has no id",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return str(user.id)
+
+
+CurrentUserIdDep = Annotated[str, Depends(get_current_user_id)]
+CurrentUserId = CurrentUserIdDep  # alias kept for older imports
 
 
 # ---------------------------------------------------------------------------

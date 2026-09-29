@@ -93,6 +93,7 @@ class Queue:
                         await client.table("background_jobs")
                         .select("*")
                         .eq("idempotency_key", idempotency_key)
+                        .eq("owner_id", owner_id)
                         .maybe_single()
                         .execute()
                     )
