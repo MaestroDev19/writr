@@ -74,7 +74,7 @@ class Settings(BaseSettings):
         return self.supabase_secret_key or self.supabase_service_role_key
 
 
-@lru_cache(maxsize=1)
+
 def get_settings() -> Settings:
     """Return the shared Settings instance (parsed once, then cached)."""
     return Settings()
