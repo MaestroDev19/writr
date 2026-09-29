@@ -1,20 +1,17 @@
 """Supabase-backed vector store for reference documents and chunks.
 
 Two jobs:
-  1. Ingest  — async Supabase client: create parent doc, embed, insert chunks
-  2. Retrieve — sync Supabase client: LangChain SupabaseVectorStore (sync-only)
+  1. Ingest — async client: create parent doc, embed, insert chunks
+  2. Retrieve — sync client: LangChain SupabaseVectorStore (sync-only API)
 
-Why both clients?
-  LangChain's SupabaseVectorStore is not async. Ingest uses await on PostgREST.
-  So this class keeps an AsyncClient for writes and a sync Client for RAG.
+Both clients are required because LangChain's wrapper has no async path, while
+ingest uses ``await`` on PostgREST.
 
-Status on the parent document moves: pending → processing → completed | failed
+Parent ``embedding_status`` moves: pending → processing → completed | failed.
 """
 
 from __future__ import annotations
 
-import hashlib
-import logging
 from collections.abc import Sequence
 from datetime import datetime, timezone
 from functools import cached_property
@@ -29,6 +26,7 @@ from supabase import AsyncClient, Client
 
 from services.embeddings import EmbeddingError, EmbeddingService, EmbeddingServiceDep
 from services.supabase import AsyncServiceSupabaseDep, SupabaseDep
+from utils.log import bind, current_event, note, scrub
 
 # Table names in Supabase (public schema).
 table_names = {
@@ -44,9 +42,7 @@ embedding_status_enum = {
     "failed": "failed",
 }
 
-logger = logging.getLogger(__name__)
-
-# Safe messages for callers / HTTP responses — no schema or DB detail.
+# Client-facing messages — no schema or DB detail leaked to HTTP responses.
 _CREATE_FAILED = "Could not create reference document."
 _CREATE_EMPTY = "Could not create reference document (empty response)."
 _ADD_FAILED = "Could not store reference chunks."
@@ -73,14 +69,6 @@ class VectorStoreError(Exception):
 # ---------------------------------------------------------------------------
 # Small helpers
 # ---------------------------------------------------------------------------
-
-def _log_ref(value: object | None) -> str:
-    """Short hash for logs so we can correlate without printing real UUIDs."""
-    if value is None:
-        return "-"
-    digest = hashlib.sha256(str(value).encode("utf-8")).hexdigest()
-    return digest[:12]
-
 
 def _chunk_content(document: Any) -> str:
     """Pull text from either a LangChain Document or our Chunk dataclass."""
@@ -131,13 +119,10 @@ class WritrVectorStore:
         sync_client: Client | None = None,
         query: str = "match_documents",
     ) -> None:
-        # Async client — used by add_documents / status updates.
-        self.supabase_client = supabase_client
+        self.supabase_client = supabase_client  # async writes / status updates
         self.embedding_function = embedding_function
-        # Sync client — required by LangChain SupabaseVectorStore only.
-        self.sync_client = sync_client
-        # Postgres RPC used by LangChain for similarity search.
-        self.query = query
+        self.sync_client = sync_client  # LangChain retrieval only (sync API)
+        self.query = query  # Postgres RPC name for similarity search
         self.document_table_name = table_names["reference_documents"]
         self.chunk_table_name = table_names["reference_chunks"]
 
@@ -153,68 +138,57 @@ class WritrVectorStore:
         owner_id: str | None = None,
         raise_on_error: bool = True,
     ) -> None:
-        """Write embedding_status on one reference_documents row.
+        """Write ``embedding_status`` on one parent row.
 
-        raise_on_error=False is used on failure paths so we still surface
-        the *original* error even if this status write itself fails.
+        ``raise_on_error=False`` on failure paths so the *original* error
+        still surfaces if this status write itself fails.
         """
         if status not in embedding_status_enum.values():
             raise VectorStoreError("Invalid embedding status.")
 
-        doc_ref = _log_ref(document_id)
-        owner_ref = _log_ref(owner_id)
+        bind(document_id=document_id, user_id=owner_id)
         try:
             query = (
                 self.supabase_client.table(self.document_table_name)
                 .update({"embedding_status": status})
                 .eq("id", document_id)
             )
-            # Optional extra guard so we never update another user's row.
+            # Extra guard: never update another user's row when owner_id is known.
             if owner_id:
                 query = query.eq("owner_id", owner_id)
             res = await query.execute()
         except APIError as e:
-            logger.exception(
-                "Embedding status update failed doc_ref=%s owner_ref=%s "
-                "status=%s db_code=%s",
-                doc_ref,
-                owner_ref,
-                status,
-                e.code,
+            bind(
+                document_id=document_id,
+                user_id=owner_id,
+                db_code=e.code,
+                error_type=type(e).__name__,
+                error_message=scrub(str(e)),
             )
             if raise_on_error:
                 raise VectorStoreError(_STATUS_FAILED) from e
             return
         except Exception as e:
-            logger.exception(
-                "Embedding status update failed unexpectedly doc_ref=%s "
-                "owner_ref=%s status=%s",
-                doc_ref,
-                owner_ref,
-                status,
+            bind(
+                document_id=document_id,
+                user_id=owner_id,
+                error_type=type(e).__name__,
+                error_message=scrub(str(e)),
             )
             if raise_on_error:
                 raise VectorStoreError(_STATUS_FAILED) from e
             return
 
         if not res.data:
-            logger.error(
-                "Embedding status update matched no rows doc_ref=%s "
-                "owner_ref=%s status=%s",
-                doc_ref,
-                owner_ref,
-                status,
+            bind(
+                document_id=document_id,
+                user_id=owner_id,
+                error_type="EmbeddingStatusMissed",
+                lost_document_id=document_id,
             )
             if raise_on_error:
                 raise VectorStoreError(_STATUS_FAILED)
             return
-
-        logger.info(
-            "Embedding status set doc_ref=%s owner_ref=%s status=%s",
-            doc_ref,
-            owner_ref,
-            status,
-        )
 
     async def delete_reference_document(
         self,
@@ -225,7 +199,7 @@ class WritrVectorStore:
     ) -> bool:
         """Delete parent note; ``ON DELETE CASCADE`` removes its chunks.
 
-        Soft-retry cleanup: drop failed/processing stub so next attempt
+        Soft-retry cleanup: drop a failed/processing stub so the next attempt
         creates a fresh parent instead of leaving orphans.
         """
         if not document_id or not str(document_id).strip():
@@ -233,8 +207,7 @@ class WritrVectorStore:
         if not owner_id or not str(owner_id).strip():
             raise VectorStoreError("Owner is required.")
 
-        doc_ref = _log_ref(document_id)
-        owner_ref = _log_ref(owner_id)
+        bind(document_id=document_id, user_id=owner_id)
         try:
             res = await (
                 self.supabase_client.table(self.document_table_name)
@@ -244,12 +217,12 @@ class WritrVectorStore:
                 .execute()
             )
         except APIError as e:
-            logger.exception(
-                "Reference document delete failed doc_ref=%s owner_ref=%s "
-                "db_code=%s",
-                doc_ref,
-                owner_ref,
-                e.code,
+            bind(
+                document_id=document_id,
+                user_id=owner_id,
+                db_code=e.code,
+                error_type=type(e).__name__,
+                error_message=scrub(str(e)),
             )
             if raise_on_error:
                 raise VectorStoreError(
@@ -258,11 +231,11 @@ class WritrVectorStore:
                 ) from e
             return False
         except Exception as e:
-            logger.exception(
-                "Reference document delete failed unexpectedly "
-                "doc_ref=%s owner_ref=%s",
-                doc_ref,
-                owner_ref,
+            bind(
+                document_id=document_id,
+                user_id=owner_id,
+                error_type=type(e).__name__,
+                error_message=scrub(str(e)),
             )
             if raise_on_error:
                 raise VectorStoreError(
@@ -272,18 +245,12 @@ class WritrVectorStore:
             return False
 
         deleted = bool(res.data)
-        if deleted:
-            logger.info(
-                "Deleted reference document doc_ref=%s owner_ref=%s",
-                doc_ref,
-                owner_ref,
-            )
-        else:
-            logger.warning(
-                "Reference document delete matched no rows "
-                "doc_ref=%s owner_ref=%s",
-                doc_ref,
-                owner_ref,
+        if not deleted:
+            bind(
+                document_id=document_id,
+                user_id=owner_id,
+                error_type="DocumentDeleteMissed",
+                lost_document_id=document_id,
             )
         return deleted
 
@@ -306,7 +273,7 @@ class WritrVectorStore:
         if chunk_count < 0:
             raise VectorStoreError("Chunk count must be zero or greater.")
 
-        owner_ref = _log_ref(owner_id)
+        bind(user_id=owner_id, chunk_count=chunk_count)
         row: dict[str, Any] = {
             "name": name.strip(),
             "owner_id": owner_id,
@@ -316,54 +283,44 @@ class WritrVectorStore:
         }
 
         try:
-            logger.info(
-                "Creating reference document owner_ref=%s chunks=%s status=%s",
-                owner_ref,
-                chunk_count,
-                embedding_status_enum["pending"],
-            )
             res = await (
                 self.supabase_client.table(self.document_table_name)
                 .upsert(row)
                 .execute()
             )
         except APIError as e:
-            # Log DB code only; keep PostgREST message out of the raise.
-            logger.exception(
-                "Reference document insert failed owner_ref=%s db_code=%s",
-                owner_ref,
-                e.code,
+            # Keep PostgREST detail out of the raise; ids stay on the wide event.
+            bind(
+                user_id=owner_id,
+                db_code=e.code,
+                error_type=type(e).__name__,
+                error_message=scrub(str(e)),
             )
             raise VectorStoreError(_CREATE_FAILED) from e
         except Exception as e:
-            logger.exception(
-                "Reference document insert failed unexpectedly owner_ref=%s",
-                owner_ref,
+            bind(
+                user_id=owner_id,
+                error_type=type(e).__name__,
+                error_message=scrub(str(e)),
             )
             raise VectorStoreError(_CREATE_FAILED) from e
 
         if not res.data:
-            logger.error(
-                "Reference document insert returned no rows owner_ref=%s",
-                owner_ref,
+            bind(
+                user_id=owner_id,
+                error_type="DocumentInsertEmpty",
             )
             raise VectorStoreError(_CREATE_EMPTY)
 
         doc_id = res.data[0].get("id")
         if not doc_id:
-            logger.error(
-                "Reference document insert missing id owner_ref=%s",
-                owner_ref,
+            bind(
+                user_id=owner_id,
+                error_type="DocumentInsertMissingId",
             )
             raise VectorStoreError(_CREATE_EMPTY)
 
-        logger.info(
-            "Created reference document doc_ref=%s owner_ref=%s chunks=%s status=%s",
-            _log_ref(doc_id),
-            owner_ref,
-            chunk_count,
-            embedding_status_enum["pending"],
-        )
+        bind(document_id=str(doc_id), user_id=owner_id, chunk_count=chunk_count)
         return doc_id
 
     # ------------------------------------------------------------------
@@ -396,38 +353,38 @@ class WritrVectorStore:
         if not documents:
             return []
 
-        owner_ref = _log_ref(owner_id)
+        bind(user_id=owner_id)
         now = datetime.now(timezone.utc).isoformat()
 
-        # --- 1. Pull content / index / metadata from each input chunk ---
+        # 1. Normalize each chunk (content / index / metadata).
         texts: list[str] = []
         indexes: list[int] = []
         metadatas: list[dict[str, Any]] = []
-        for i, document in enumerate(documents):
+        for _i, document in enumerate(documents):
             content = _chunk_content(document).strip()
             if not content:
-                logger.error(
-                    "Empty chunk content owner_ref=%s index=%s",
-                    owner_ref,
-                    i,
+                bind(
+                    user_id=owner_id,
+                    error_type="EmptyChunk",
+                    error_message="Chunk content cannot be empty.",
                 )
                 raise VectorStoreError("Chunk content cannot be empty.")
             texts.append(content)
-            indexes.append(_chunk_index(document, i))
+            indexes.append(_chunk_index(document, _i))
             metadatas.append(_chunk_metadata(document))
 
         chunk_count = len(texts)
 
-        # --- 2. Parent row (pending) ---
+        # 2. Parent row starts as pending.
         document_id = await self.create_reference_document(
             name=name.strip(),
             owner_id=owner_id,
             chunk_count=chunk_count,
         )
-        doc_ref = _log_ref(document_id)
+        bind(document_id=str(document_id), user_id=owner_id, chunk_count=chunk_count)
 
         async def _fail_and_raise(exc: BaseException, client_message: str) -> NoReturn:
-            # Always try to leave the parent as failed before re-raising.
+            # Leave parent as failed before re-raising so the UI can show status.
             await self._set_embedding_status(
                 document_id=document_id,
                 status=embedding_status_enum["failed"],
@@ -443,32 +400,34 @@ class WritrVectorStore:
             ) from exc
 
         try:
-            # --- 3. pending → processing ---
+            # 3. pending → processing (signals work in flight).
             await self._set_embedding_status(
                 document_id=document_id,
                 status=embedding_status_enum["processing"],
                 owner_id=owner_id,
             )
 
-            # --- 4. Embed every chunk (one API call) ---
-            logger.info(
-                "Embedding %s chunk(s) doc_ref=%s owner_ref=%s",
-                chunk_count,
-                doc_ref,
-                owner_ref,
+            # 4. One embedding API call for the whole batch.
+            client_id = getattr(self.embedding_function, "embedding_client_id", None)
+            bind(
+                document_id=str(document_id),
+                user_id=owner_id,
+                embedding_client_id=client_id,
+                chunk_count=chunk_count,
             )
             embeddings = await self.embedding_function.embed_documents(texts)
 
             if len(embeddings) != chunk_count:
-                logger.error(
-                    "Embedding count mismatch doc_ref=%s expected=%s got=%s",
-                    doc_ref,
-                    chunk_count,
-                    len(embeddings),
+                bind(
+                    document_id=str(document_id),
+                    user_id=owner_id,
+                    chunk_count=chunk_count,
+                    embedding_count=len(embeddings),
+                    error_type="EmbeddingCountMismatch",
                 )
                 raise VectorStoreError(_EMBED_FAILED)
 
-            # --- 5. Build + insert reference_chunks rows ---
+            # 5. Insert all chunk rows in one batch.
             rows: list[dict[str, Any]] = [
                 {
                     "document_id": document_id,
@@ -482,12 +441,6 @@ class WritrVectorStore:
                 for i in range(chunk_count)
             ]
 
-            logger.info(
-                "Inserting %s chunk(s) doc_ref=%s owner_ref=%s",
-                chunk_count,
-                doc_ref,
-                owner_ref,
-            )
             res = await (
                 self.supabase_client.table(self.chunk_table_name)
                 .upsert(rows)
@@ -495,19 +448,21 @@ class WritrVectorStore:
             )
 
             if not res.data:
-                logger.error(
-                    "Chunk insert returned no rows doc_ref=%s owner_ref=%s",
-                    doc_ref,
-                    owner_ref,
+                bind(
+                    document_id=str(document_id),
+                    user_id=owner_id,
+                    chunk_count=chunk_count,
+                    error_type="ChunkInsertEmpty",
                 )
                 raise VectorStoreError(_ADD_EMPTY)
 
             if len(res.data) != chunk_count:
-                logger.error(
-                    "Chunk insert row count mismatch doc_ref=%s expected=%s got=%s",
-                    doc_ref,
-                    chunk_count,
-                    len(res.data),
+                bind(
+                    document_id=str(document_id),
+                    user_id=owner_id,
+                    chunk_count=chunk_count,
+                    inserted_count=len(res.data),
+                    error_type="ChunkInsertCountMismatch",
                 )
                 raise VectorStoreError(_ADD_EMPTY)
 
@@ -515,59 +470,63 @@ class WritrVectorStore:
             for row in res.data:
                 chunk_id = row.get("id")
                 if not chunk_id:
-                    logger.error(
-                        "Chunk insert missing id doc_ref=%s owner_ref=%s",
-                        doc_ref,
-                        owner_ref,
+                    bind(
+                        document_id=str(document_id),
+                        user_id=owner_id,
+                        error_type="ChunkInsertMissingId",
                     )
                     raise VectorStoreError(_ADD_EMPTY)
                 chunk_ids.append(str(chunk_id))
 
-            # --- 6. processing → completed ---
+            # 6. processing → completed.
             await self._set_embedding_status(
                 document_id=document_id,
                 status=embedding_status_enum["completed"],
                 owner_id=owner_id,
             )
 
-            logger.info(
-                "Stored %s chunk(s) doc_ref=%s owner_ref=%s status=%s",
-                len(chunk_ids),
-                doc_ref,
-                owner_ref,
-                embedding_status_enum["completed"],
+            bind(
+                document_id=str(document_id),
+                user_id=owner_id,
+                chunk_id=chunk_ids[0],
+                chunk_ids=chunk_ids,
+                chunk_count=len(chunk_ids),
             )
             return chunk_ids
 
         except EmbeddingError as e:
-            logger.exception(
-                "Chunk embed failed doc_ref=%s owner_ref=%s count=%s",
-                doc_ref,
-                owner_ref,
-                chunk_count,
+            bind(
+                document_id=str(document_id),
+                user_id=owner_id,
+                chunk_count=chunk_count,
+                error_type=type(e).__name__,
+                error_message=scrub(str(e)),
             )
             await _fail_and_raise(e, _EMBED_FAILED)
         except APIError as e:
-            logger.exception(
-                "Chunk insert failed doc_ref=%s owner_ref=%s db_code=%s count=%s",
-                doc_ref,
-                owner_ref,
-                e.code,
-                chunk_count,
+            bind(
+                document_id=str(document_id),
+                user_id=owner_id,
+                chunk_count=chunk_count,
+                db_code=e.code,
+                error_type=type(e).__name__,
+                error_message=scrub(str(e)),
             )
             await _fail_and_raise(e, _ADD_FAILED)
         except VectorStoreError as e:
-            logger.exception(
-                "Add documents failed doc_ref=%s owner_ref=%s",
-                doc_ref,
-                owner_ref,
+            bind(
+                document_id=str(document_id),
+                user_id=owner_id,
+                error_type=type(e).__name__,
+                error_message=scrub(str(e)),
             )
             await _fail_and_raise(e, str(e) or _ADD_FAILED)
         except Exception as e:
-            logger.exception(
-                "Add documents failed unexpectedly doc_ref=%s owner_ref=%s",
-                doc_ref,
-                owner_ref,
+            bind(
+                document_id=str(document_id),
+                user_id=owner_id,
+                error_type=type(e).__name__,
+                error_message=scrub(str(e)),
             )
             await _fail_and_raise(e, _ADD_FAILED)
 
@@ -613,7 +572,20 @@ class WritrVectorStore:
         except VectorStoreError:
             raise
         except Exception as e:
-            logger.exception("Failed to create LangChain SupabaseVectorStore")
+            fields = {
+                "operation": "vector_store_init",
+                "error_type": type(e).__name__,
+                "error_message": scrub(str(e)),
+                "outcome": "error",
+            }
+            embedding = self.embedding_function
+            client_id = getattr(embedding, "embedding_client_id", None)
+            if client_id:
+                fields["embedding_client_id"] = client_id
+            if current_event() is None:
+                note(**fields)
+            else:
+                bind(**fields)
             raise VectorStoreError("Could not create vector store.") from e
 
     def as_retriever(self, **kwargs: Any) -> VectorStoreRetriever:

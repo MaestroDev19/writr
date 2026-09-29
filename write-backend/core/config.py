@@ -32,6 +32,12 @@ class Settings(BaseSettings):
     # --- server ---
     environment: str = "development"  # e.g. development | production
     port: int = 8000
+    # Optional deploy identity. Wide events include these only when set.
+    service_name: str = "writr-backend"
+    service_version: str | None = None
+    commit_sha: str | None = None
+    region: str | None = None
+    deployment_id: str | None = None
 
     # --- Supabase ---
     # Project URL, e.g. https://xxxx.supabase.co

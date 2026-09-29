@@ -10,6 +10,7 @@ import {
 } from "react"
 import type { User, Session, AuthChangeEvent } from "@supabase/supabase-js"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { logError } from "@/lib/log"
 import { supabase } from "@/lib/supabase"
 import type { LoginFormValues, UserProfile } from "@/types/auth"
 
@@ -51,7 +52,12 @@ async function fetchUserProfile(userId: string): Promise<UserProfile | null> {
     .maybeSingle()
 
   if (error) {
-    console.error("Error fetching user profile:", error.message)
+    logError({
+      operation: "profile_fetch",
+      user_id: userId,
+      error_type: "ProfileFetchError",
+      error_message: error.message,
+    })
     return null
   }
 
@@ -64,11 +70,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [isAuthLoading, setIsAuthLoading] = useState(true)
 
-  // 1. Listen for Supabase auth state changes and initial session
+  // Keep session + user in sync with Supabase (initial load + later changes).
   useEffect(() => {
     let isMounted = true
 
-    // Fetch initial session
     supabase.auth.getSession().then(({ data: { session: initialSession } }) => {
       if (!isMounted) return
       setSession(initialSession)
@@ -76,7 +81,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsAuthLoading(false)
     })
 
-    // Subscribe to auth state updates
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(
@@ -102,7 +106,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [queryClient])
 
-  // 2. Fetch profile using TanStack Query
+  // Profile is keyed by user id; disabled until auth resolves.
   const {
     data: profile = null,
     isLoading: isProfileLoading,
@@ -114,7 +118,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     staleTime: 1000 * 60 * 5,
   })
 
-  // 3. Helper to upload avatar if provided
+  // Avatar upload is best-effort — signup still succeeds if storage fails.
   const uploadAvatar = useCallback(
     async (userId: string, file: File): Promise<string | null> => {
       try {
@@ -129,7 +133,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           })
 
         if (uploadError) {
-          console.error("Avatar upload failed:", uploadError.message)
+          logError({
+            operation: "avatar_upload",
+            user_id: userId,
+            avatar_object_id: filePath,
+            error_type: "AvatarUploadError",
+            error_message: uploadError.message,
+          })
           return null
         }
 
@@ -139,14 +149,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         return publicUrl
       } catch (err) {
-        console.error("Unexpected error uploading avatar:", err)
+        logError({
+          operation: "avatar_upload",
+          user_id: userId,
+          avatar_object_id: filePath,
+          error_type: err instanceof Error ? err.name : "AvatarUploadError",
+          error_message: err instanceof Error ? err.message : "avatar_upload_failed",
+        })
         return null
       }
     },
     []
   )
 
-  // 4. Sign in handler
   const signIn = useCallback(
     async ({ email, password }: LoginFormValues): Promise<{ error?: string }> => {
       try {
@@ -168,7 +183,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     []
   )
 
-  // 5. Sign up handler
   const signUp = useCallback(
     async ({
       email,
@@ -195,7 +209,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const newUser = data.user
         const newSession = data.session
 
-        // If user already exists (identities empty), Supabase returns user without session
+        // Empty identities means the email is already registered.
         if (newUser && newUser.identities && newUser.identities.length === 0) {
           return {
             needsEmailConfirmation: false,
@@ -203,10 +217,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         }
 
-        // Check if email confirmation is required
         const needsConfirmation = !!(newUser && !newSession)
 
-        // If session is active (auto-confirm enabled), upload avatar and update profile
+        // Avatar/profile only when auto-confirm already issued a session.
         if (newUser && newSession && avatarFile) {
           const avatarUrl = await uploadAvatar(newUser.id, avatarFile)
           if (avatarUrl) {
@@ -241,7 +254,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [uploadAvatar, queryClient]
   )
 
-  // 6. Sign out handler
   const signOut = useCallback(async () => {
     try {
       await supabase.auth.signOut()
@@ -249,11 +261,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(null)
       setUser(null)
     } catch (err) {
-      console.error("Error signing out:", err)
+      logError({
+        operation: "sign_out",
+        user_id: user?.id,
+        error_type: err instanceof Error ? err.name : "SignOutError",
+        error_message: err instanceof Error ? err.message : "sign_out_failed",
+      })
     }
-  }, [queryClient])
+  }, [queryClient, user])
 
-  // 7. Reset password handler
   const resetPassword = useCallback(
     async (email: string): Promise<{ error?: string; success: boolean }> => {
       try {
@@ -275,7 +291,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     []
   )
 
-  // 8. Refresh profile handler
   const refreshProfile = useCallback(async () => {
     if (user?.id) {
       await refetchProfile()

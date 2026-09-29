@@ -1,13 +1,14 @@
 """Composition root for reference-ingest services.
 
 Routes inject ``ConnectorDep`` once and get doc loading, chunking,
-embeddings, the job queue, and the vector store through a single object.
+embeddings, the job queue, and the vector store through one object.
 """
 
 from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import uuid
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
@@ -19,17 +20,18 @@ from fastapi import Depends
 from services.chunking import Chunker, ChunkerDep
 from services.doc_loader import DocLoader, DocLoaderDep, DocLoaderError, LoadedDocument
 from services.embeddings import EmbeddingError, EmbeddingService, EmbeddingServiceDep
-from services.queue import Queue, QueueDep
+from services.queue import ActiveGenerationError, Queue, QueueDep
 from services.vetctor_store import (
     VectorStoreError,
     WritrVectorStore,
     WritrVectorStoreDep,
     embedding_status_enum,
 )
-from utils.log import logger
+from utils.log import bind, note, scrub
+from utils.wide_event import wide_event_scope
 
 _HEARTBEAT_INTERVAL_SECONDS = 30
-# background_jobs.job_type has a CHECK constraint; routing uses payload.source_type.
+# job_type is constrained in DB; payload.source_type chooses the handler.
 _INGEST_JOB_TYPE = "embed_document"
 _RATE_LIMIT_WAIT_SECONDS = 60.0
 
@@ -42,17 +44,18 @@ async def heartbeat(
     *,
     interval_seconds: float = _HEARTBEAT_INTERVAL_SECONDS,
 ) -> AsyncIterator[None]:
-    """Pulse ``queue.heartbeat`` while the job body runs so locks stay fresh."""
+    """Keep ``locked_at`` fresh while the job body runs so cron does not reclaim it."""
 
     async def _pulse() -> None:
         while True:
             await asyncio.sleep(interval_seconds)
             owned = await queue.heartbeat(job_id=job_id, worker_id=worker_id)
             if not owned:
-                logger.warning(
-                    "Lost job lock during heartbeat job_id=%s worker_id=%s",
-                    job_id,
-                    worker_id,
+                bind(
+                    job_id=job_id,
+                    worker_id=worker_id,
+                    lost_lock_job_id=job_id,
+                    error_type="JobLockLost",
                 )
                 return
 
@@ -68,7 +71,7 @@ async def heartbeat(
 
 
 def _decode_document_bytes(data: Any) -> bytes:
-    """Accept raw bytes or a base64 string (JSON-safe queue payloads)."""
+    """Decode queue payloads that store uploads as base64 strings."""
     if isinstance(data, bytes):
         return data
     if isinstance(data, str):
@@ -84,23 +87,8 @@ def _is_rate_limited(error: Exception) -> bool:
     )
 
 
-def _resolve_idempotency_key(idempotency_key: str | None) -> str:
-    if idempotency_key and str(idempotency_key).strip():
-        return str(idempotency_key).strip()
-    return str(uuid.uuid4())
-
-
-def _document_idempotency_suffix(document: Any, index: int) -> str:
-    """Stable-ish per-file suffix for fan-out idempotency keys."""
-    if isinstance(document, dict) and document.get("filename"):
-        return f"{index}:{Path(str(document['filename'])).name}"
-    if isinstance(document, (str, Path)):
-        return f"{index}:{Path(document).name}"
-    return str(index)
-
-
 class Connector:
-    """Façade over the services used to ingest and retrieve reference docs."""
+    """Façade over ingest/retrieve services used by routes and the worker."""
 
     def __init__(
         self,
@@ -116,62 +104,56 @@ class Connector:
         self.queue = queue
         self.writr_vector_store = writr_vector_store
 
-    async def enqueue_text(
-        self, text: str, owner_id: str, *, idempotency_key: str | None = None
-    ) -> dict:
+    async def _require_idle_owner(self, owner_id: str) -> None:
+        """Stop before enqueue when this owner already has a queued or running job."""
+        active = await self.queue.find_active_job(owner_id)
+        if active is None:
+            return
+        bind(
+            user_id=owner_id,
+            job_id=active.get("id"),
+            job_status=active.get("status"),
+            queue_result="busy",
+        )
+        raise ActiveGenerationError(active)
+
+    async def enqueue_text(self, text: str, owner_id: str) -> dict:
+        await self._require_idle_owner(owner_id)
         return await self.queue.enqueue(
             job_type=_INGEST_JOB_TYPE,
             payload={"text": text, "source_type": "text"},
             owner_id=owner_id,
-            idempotency_key=_resolve_idempotency_key(idempotency_key),
         )
 
-    async def enqueue_document(
-        self, document: Any, owner_id: str, *, idempotency_key: str | None = None
-    ) -> dict:
+    async def enqueue_document(self, document: Any, owner_id: str) -> dict:
+        await self._require_idle_owner(owner_id)
         return await self.queue.enqueue(
             job_type=_INGEST_JOB_TYPE,
             payload={"document": document, "source_type": "document"},
             owner_id=owner_id,
-            idempotency_key=_resolve_idempotency_key(idempotency_key),
         )
 
     async def enqueue_documents(
-        self,
-        documents: Sequence[Any],
-        owner_id: str,
-        *,
-        idempotency_key: str | None = None,
-    ) -> list[dict]:
-        """Enqueue one job per file so retries never re-ingest completed siblings."""
+        self, documents: Sequence[Any], owner_id: str
+    ) -> dict:
+        """Queue one job for the whole batch. One owner, one in-flight generation."""
         if not documents:
             raise ValueError("documents list is empty")
 
-        base = _resolve_idempotency_key(idempotency_key)
-        jobs: list[dict] = []
-        for index, document in enumerate(documents):
-            key = f"{base}:{_document_idempotency_suffix(document, index)}"
-            jobs.append(
-                await self.enqueue_document(
-                    document, owner_id, idempotency_key=key
-                )
-            )
-        logger.info(
-            "Enqueued %s document job(s) owner_ref=%s base_key=%s",
-            len(jobs),
-            owner_id[:8] if owner_id else "-",
-            base[:12],
+        await self._require_idle_owner(owner_id)
+        bind(user_id=owner_id, document_count=len(documents))
+        return await self.queue.enqueue(
+            job_type=_INGEST_JOB_TYPE,
+            payload={"documents": list(documents), "source_type": "documents"},
+            owner_id=owner_id,
         )
-        return jobs
 
-    async def enqueue_document_from_url(
-        self, url: str, owner_id: str, *, idempotency_key: str | None = None
-    ) -> dict:
+    async def enqueue_document_from_url(self, url: str, owner_id: str) -> dict:
+        await self._require_idle_owner(owner_id)
         return await self.queue.enqueue(
             job_type=_INGEST_JOB_TYPE,
             payload={"url": url, "source_type": "document_from_url"},
             owner_id=owner_id,
-            idempotency_key=_resolve_idempotency_key(idempotency_key),
         )
 
     async def _load_document(self, document: Any) -> LoadedDocument:
@@ -197,8 +179,16 @@ class Connector:
     async def _store_loaded(
         self, loaded: LoadedDocument, *, owner_id: str, default_name: str
     ) -> None:
+        encoded = loaded.text.encode("utf-8")
+        bind(
+            user_id=owner_id,
+            content_bytes=len(encoded),
+            content_sha256=hashlib.sha256(encoded).hexdigest(),
+            mime_hint=loaded.metadata.get("mime_hint"),
+        )
         name = loaded.metadata.get("filename") or default_name
         chunks = self.chunker.chunk(loaded.text, doc_name=name)
+        bind(chunk_count=len(chunks), user_id=owner_id)
         await self.writr_vector_store.add_documents(
             chunks, name=name, owner_id=owner_id
         )
@@ -213,9 +203,12 @@ class Connector:
         wait_seconds: float | None = None,
         document_id: str | None = None,
     ) -> bool:
-        """Soft fail: drop partial note stub, optional wait, requeue."""
+        """Soft fail: drop partial note stub, optionally wait, then requeue.
+
+        Use for transient errors (rate limits, temporary store failures).
+        """
         if document_id:
-            # CASCADE deletes any orphan chunks; next claim creates a fresh parent.
+            # CASCADE removes orphan chunks; the next claim creates a fresh parent.
             await self.writr_vector_store.delete_reference_document(
                 document_id=document_id,
                 owner_id=owner_id,
@@ -231,13 +224,13 @@ class Connector:
             error=error,
             retry=True,
         )
-        logger.warning(
-            "Retry scheduled job_id=%s owner_ref=%s doc_ref=%s ok=%s error=%s",
-            job_id,
-            owner_id[:8] if owner_id else "-",
-            document_id[:8] if document_id else "-",
-            ok,
-            error[:200],
+        bind(
+            job_id=job_id,
+            user_id=owner_id,
+            worker_id=worker_id,
+            document_id=document_id,
+            error_message=scrub(error),
+            outcome="error",
         )
         return ok
 
@@ -250,7 +243,7 @@ class Connector:
         error: str,
         document_id: str | None = None,
     ) -> bool:
-        """Hard fail: mark note failed (keep for UI), mark job dead."""
+        """Hard fail: keep the note (status=failed) for the UI; mark the job dead."""
         if document_id:
             await self.writr_vector_store._set_embedding_status(
                 document_id=document_id,
@@ -265,12 +258,13 @@ class Connector:
             error=error,
             retry=False,
         )
-        logger.error(
-            "Job dead job_id=%s owner_id=%s document_id=%s error=%s",
-            job_id,
-            owner_id,
-            document_id,
-            error[:200],
+        bind(
+            job_id=job_id,
+            user_id=owner_id,
+            worker_id=worker_id,
+            document_id=document_id,
+            error_message=scrub(error),
+            outcome="error",
         )
         return ok
 
@@ -281,18 +275,35 @@ class Connector:
         job_id: str,
         owner_id: str,
         worker_id: str,
-        context: str,
     ) -> bool:
-        """Route load/store failures to hard vs soft handlers."""
+        """Choose hard vs soft failure based on error type and whether a parent exists."""
+        document_id = getattr(exc, "document_id", None)
         if isinstance(exc, DocLoaderError):
-            logger.error("%s load failed job_id=%s: %s", context, job_id, exc)
+            failure_stage = "load"
+        elif isinstance(exc, EmbeddingError):
+            failure_stage = "embed"
+        elif isinstance(exc, VectorStoreError):
+            failure_stage = "store"
+        else:
+            failure_stage = "ingest"
+        bind(
+            job_id=job_id,
+            user_id=owner_id,
+            worker_id=worker_id,
+            document_id=document_id if isinstance(document_id, str) else None,
+            error_type=type(exc).__name__,
+            error_message=scrub(str(exc)),
+            failure_stage=failure_stage,
+            rate_limited=isinstance(exc, Exception) and _is_rate_limited(exc),
+            outcome="error",
+        )
+        if isinstance(exc, DocLoaderError):
             return await self.failed_job_handler(
                 job_id, owner_id, worker_id, error=str(exc)
             )
 
         if isinstance(exc, EmbeddingError):
             wait = _RATE_LIMIT_WAIT_SECONDS if _is_rate_limited(exc) else None
-            logger.exception("%s embedding failed job_id=%s", context, job_id)
             return await self.error_and_retry_handler(
                 job_id,
                 owner_id,
@@ -302,14 +313,12 @@ class Connector:
             )
 
         if isinstance(exc, VectorStoreError):
-            # No parent yet → permanent validation / create failure.
+            # No parent yet and not rate-limited → permanent validation/create failure.
             if exc.document_id is None and not _is_rate_limited(exc):
-                logger.error("%s store failed job_id=%s: %s", context, job_id, exc)
                 return await self.failed_job_handler(
                     job_id, owner_id, worker_id, error=str(exc)
                 )
             wait = _RATE_LIMIT_WAIT_SECONDS if _is_rate_limited(exc) else None
-            logger.exception("%s store failed job_id=%s", context, job_id)
             return await self.error_and_retry_handler(
                 job_id,
                 owner_id,
@@ -319,8 +328,6 @@ class Connector:
                 document_id=exc.document_id,
             )
 
-        logger.exception("%s ingest failed job_id=%s", context, job_id)
-        document_id = getattr(exc, "document_id", None)
         return await self.error_and_retry_handler(
             job_id,
             owner_id,
@@ -347,7 +354,6 @@ class Connector:
                 job_id=job_id,
                 owner_id=owner_id,
                 worker_id=worker_id,
-                context="Document",
             )
 
     async def split_documents_job(
@@ -357,15 +363,22 @@ class Connector:
         job_id: str,
         worker_id: str,
     ) -> bool:
-        """Legacy batch payload → one queued job per file, then complete wrapper."""
+        """Legacy batch payload: ingest every file on this row.
+
+        A second job would be refused while this one is running, so the batch
+        stays on the generation the owner already has.
+        """
         try:
             if not documents:
                 raise DocLoaderError("documents list is empty")
-            await self.enqueue_documents(
-                documents,
-                owner_id,
-                idempotency_key=f"split:{job_id}",
-            )
+            async with heartbeat(self.queue, job_id, worker_id):
+                for index, document in enumerate(documents):
+                    loaded = await self._load_document(document)
+                    await self._store_loaded(
+                        loaded,
+                        owner_id=owner_id,
+                        default_name=f"untitled document {index} {uuid.uuid4()}",
+                    )
             return await self.queue.complete_job(job_id=job_id, worker_id=worker_id)
         except Exception as e:
             return await self._handle_ingest_error(
@@ -373,7 +386,6 @@ class Connector:
                 job_id=job_id,
                 owner_id=owner_id,
                 worker_id=worker_id,
-                context="Documents split",
             )
 
     async def load_and_process_document_from_url(
@@ -394,7 +406,6 @@ class Connector:
                 job_id=job_id,
                 owner_id=owner_id,
                 worker_id=worker_id,
-                context="URL",
             )
 
     async def load_and_process_text(
@@ -415,54 +426,95 @@ class Connector:
                 job_id=job_id,
                 owner_id=owner_id,
                 worker_id=worker_id,
-                context="Text",
             )
 
     async def run_next_job(self, worker_id: str) -> dict | None:
-        job = await self.queue.claim_job(worker_id=worker_id)
+        try:
+            job = await self.queue.claim_job(worker_id=worker_id)
+        except Exception as exc:
+            note(
+                operation="claim_job",
+                worker_id=worker_id,
+                outcome="error",
+                error_type=type(exc).__name__,
+                error_message=scrub(str(exc)),
+                queue_result="claim_failed",
+            )
+            return None
         if job is None:
             return None
         job_id = job["id"]
-        payload = job["payload"]
+        payload = job["payload"] if isinstance(job.get("payload"), dict) else {}
         owner_id = job["owner_id"]
+        request_id = payload.get("request_id") or str(uuid.uuid4())
         source_type = payload.get("source_type")
-        if source_type == "text":
-            await self.load_and_process_text(
-                text=payload["text"],
-                owner_id=owner_id,
-                job_id=job_id,
+        operation = {
+            "text": "process_text",
+            "document": "process_document",
+            "document_from_url": "process_url",
+            "documents": "split_documents",
+            " collection of documents": "split_documents",
+        }.get(str(source_type), "process_unknown")
+        try:
+            with wide_event_scope(
+                operation=operation,
+                request_id=str(request_id),
+                job_id=str(job_id),
+                user_id=str(owner_id) if owner_id else None,
                 worker_id=worker_id,
-            )
-        elif source_type == "document":
-            await self.load_and_process_document(
-                document=payload["document"],
-                owner_id=owner_id,
-                job_id=job_id,
-                worker_id=worker_id,
-            )
-        elif source_type in {"documents", " collection of documents"}:
-            # Legacy batch jobs: fan out, never ingest the batch in one lock.
-            await self.split_documents_job(
-                documents=payload["documents"],
-                owner_id=owner_id,
-                job_id=job_id,
-                worker_id=worker_id,
-            )
-        elif source_type == "document_from_url":
-            await self.load_and_process_document_from_url(
-                url=payload["url"],
-                owner_id=owner_id,
-                job_id=job_id,
-                worker_id=worker_id,
-            )
-        else:
-            await self.failed_job_handler(
-                job_id,
-                owner_id,
-                worker_id,
-                error=f"unknown source_type: {source_type}",
-            )
+                job_status=job.get("status"),
+                attempts=job.get("attempts"),
+                job_type=job.get("job_type"),
+                source_type=str(source_type) if source_type else None,
+            ):
+                if source_type == "text":
+                    await self.load_and_process_text(
+                        text=payload["text"],
+                        owner_id=owner_id,
+                        job_id=job_id,
+                        worker_id=worker_id,
+                    )
+                elif source_type == "document":
+                    await self.load_and_process_document(
+                        document=payload["document"],
+                        owner_id=owner_id,
+                        job_id=job_id,
+                        worker_id=worker_id,
+                    )
+                elif source_type in {"documents", " collection of documents"}:
+                    # One row per owner while work is in flight, so the batch stays on this job.
+                    await self.split_documents_job(
+                        documents=payload["documents"],
+                        owner_id=owner_id,
+                        job_id=job_id,
+                        worker_id=worker_id,
+                    )
+                elif source_type == "document_from_url":
+                    await self.load_and_process_document_from_url(
+                        url=payload["url"],
+                        owner_id=owner_id,
+                        job_id=job_id,
+                        worker_id=worker_id,
+                    )
+                else:
+                    bind(
+                        failure_stage="unknown_source",
+                        error_type="UnknownSource",
+                        error_message=scrub(f"unknown source_type: {source_type}"),
+                        outcome="error",
+                    )
+                    await self.failed_job_handler(
+                        job_id,
+                        owner_id,
+                        worker_id,
+                        error=f"unknown source_type: {source_type}",
+                    )
+        except Exception:
+            # The job scope already emitted this failure.
+            return job
         return job
+
+
 def get_connector(
     doc_loader: DocLoaderDep,
     chunker: ChunkerDep,

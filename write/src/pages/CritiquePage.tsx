@@ -17,8 +17,10 @@ import {
   AlertCircle,
 } from "lucide-react"
 
+import { useAuth } from "@/contexts/auth-context"
 import { useSettings, DEFAULT_CRITIQUE_CONFIG } from "@/contexts/settings-context"
 import { reviewDocumentApi } from "@/lib/api-client"
+import { logError, sha256Hex } from "@/lib/log"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -148,6 +150,7 @@ function ScoreMeter({
 }
 
 export default function CritiquePage() {
+  const { user } = useAuth()
   const { settings } = useSettings()
   const config = settings.critiqueConfig || DEFAULT_CRITIQUE_CONFIG
 
@@ -213,7 +216,7 @@ export default function CritiquePage() {
         return
       }
 
-      // Mock / empty backend: local simulation for UI work
+      // No live API result — fall back to a local report so UI work can continue.
       const generatedReport: CritiqueReport = {
         scoreOverall: activeLensId === "cadence-rhythm" ? 82 : 88,
         pacingScore: 84,
@@ -253,8 +256,22 @@ export default function CritiquePage() {
 
       setReport(generatedReport)
     } catch (err) {
-      console.error(err)
-      // Keep prior report; surface via existing UI only if we add toast later
+      const failedRequestId =
+        err &&
+        typeof err === "object" &&
+        "requestId" in err &&
+        typeof err.requestId === "string"
+          ? err.requestId
+          : undefined
+      logError({
+        operation: "critique_analyze",
+        user_id: user?.id,
+        request_id: failedRequestId,
+        manuscript_sha256: await sha256Hex(manuscriptInput),
+        error_type: err instanceof Error ? err.name : "CritiqueError",
+        error_message: err instanceof Error ? err.message : "critique_failed",
+      })
+      // Leave the previous report visible; toast for this path can come later.
     } finally {
       setIsAnalyzing(false)
     }

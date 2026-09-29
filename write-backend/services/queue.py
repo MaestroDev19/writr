@@ -1,15 +1,18 @@
-import hashlib
-import logging
+"""Background job queue backed by ``background_jobs`` in Supabase.
+
+Workers claim rows via RPC, heartbeat while running, then complete or fail
+with exponential backoff. Uses the secret-key client (RLS bypassed).
+"""
+
 from datetime import datetime, timedelta, timezone
 from enum import StrEnum
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import Depends
 from postgrest.exceptions import APIError
 
 from services.supabase import AsyncServiceSupabaseDep, get_async_service_supabase
-
-logger = logging.getLogger(__name__)
+from utils.log import bind, current_event, note, scrub
 
 
 class QueueStatus(StrEnum):
@@ -20,17 +23,46 @@ class QueueStatus(StrEnum):
     dead = "dead"
 
 
-def _log_ref(value: object | None) -> str:
-    """Short opaque ref for logs: correlatable, not reversible to full IDs/keys."""
-    if value is None:
-        return "-"
-    digest = hashlib.sha256(str(value).encode("utf-8")).hexdigest()
-    return digest[:12]
+# In-flight work. A finished, failed, or dead row does not block the next one.
+ACTIVE_JOB_STATUSES: tuple[str, ...] = (
+    QueueStatus.queued.value,
+    QueueStatus.running.value,
+)
+
+
+class ActiveGenerationError(Exception):
+    """This owner already has a queued or running job. Nothing was inserted."""
+
+    def __init__(self, job: dict) -> None:
+        self.job = job
+        super().__init__("owner already has an active generation")
+
+
+def _assign_job_id(fields: dict[str, Any], job_id: object) -> None:
+    """Keep the parent job id when a hop enqueues child jobs."""
+    event = current_event()
+    parent_job_id = event.get("job_id") if event else None
+    if parent_job_id and job_id and parent_job_id != job_id:
+        children = list(event.get("child_job_ids") or []) if event else []
+        if job_id not in children:
+            children.append(job_id)
+        fields["child_job_ids"] = children
+        return
+    fields["job_id"] = job_id
+
+
+def _with_request_id(payload: dict) -> dict:
+    """Stamp the in-flight request id onto the job so the worker hop can correlate logs."""
+    event = current_event()
+    request_id = event.get("request_id") if event else None
+    if not request_id or "request_id" in payload:
+        return payload
+    return {**payload, "request_id": request_id}
 
 
 class Queue:
     def __init__(self, supabase_client=None) -> None:
-        # Prefer an injected service-role client; fall back at call time if needed.
+        # Injected at construction when available; otherwise lazy-loaded on first use.
         self.supabase_client = supabase_client
 
     async def _client(self):
@@ -39,108 +71,108 @@ class Queue:
         self.supabase_client = await get_async_service_supabase()
         return self.supabase_client
 
+    async def find_active_job(self, owner_id: str) -> dict | None:
+        """In-flight generation for this owner, if one exists. Does not insert."""
+        if not owner_id or not str(owner_id).strip():
+            raise ValueError("owner_id is required")
+        client = await self._client()
+        return await self._active_job(client, owner_id)
+
+    async def _active_job(self, client, owner_id: str) -> dict | None:
+        """Return this owner's in-flight job, if one exists. Payload is omitted."""
+        res = (
+            await client.table("background_jobs")
+            .select("id, owner_id, job_type, status, created_at")
+            .eq("owner_id", owner_id)
+            .in_("status", list(ACTIVE_JOB_STATUSES))
+            .order("created_at")
+            .limit(1)
+            .execute()
+        )
+        rows = res.data or []
+        return rows[0] if rows else None
+
+    def _mark_busy(self, fields: dict[str, Any], job: dict) -> None:
+        fields["queue_result"] = "busy"
+        fields["job_status"] = job.get("status")
+        _assign_job_id(fields, job.get("id"))
+
     async def enqueue(
         self,
         *,
         job_type: str,
         payload: dict,
-        idempotency_key: str,
         owner_id: str,
     ) -> dict:
-        if not idempotency_key or not str(idempotency_key).strip():
-            raise ValueError("idempotency_key is required for enqueue")
+        if not owner_id or not str(owner_id).strip():
+            raise ValueError("owner_id is required for enqueue")
 
+        stored_payload = _with_request_id(payload)
         row = {
             "job_type": job_type,
-            "payload": payload,
-            "idempotency_key": idempotency_key,
+            "payload": stored_payload,
             "owner_id": owner_id,
             "status": QueueStatus.queued.value,
         }
 
         client = await self._client()
-        # Safe log fields: job_type + short hashes. Never log payload / raw keys / owner UUID.
-        key_ref = _log_ref(idempotency_key)
-        owner_ref = _log_ref(owner_id)
+        # Log ids only — never payload text, document bodies, or credentials.
+        fields: dict[str, Any] = {
+            "user_id": owner_id,
+            "job_type": job_type,
+        }
+        open_event = current_event()
+        if open_event and open_event.get("request_id"):
+            fields["request_id"] = open_event["request_id"]
 
         try:
-            logger.info(
-                "Enqueueing job type=%s owner_ref=%s key_ref=%s",
-                job_type,
-                owner_ref,
-                key_ref,
-            )
+            # One in-flight generation per owner. Check before insert so a second
+            # request never becomes a row. The partial unique index closes the race.
+            active = await self._active_job(client, owner_id)
+            if active:
+                self._mark_busy(fields, active)
+                raise ActiveGenerationError(active)
+
             res = await client.table("background_jobs").insert(row).execute()
             job = res.data[0]
-            logger.info(
-                "Enqueued job id=%s type=%s key_ref=%s",
-                job.get("id"),
-                job_type,
-                key_ref,
-            )
+            _assign_job_id(fields, job.get("id"))
+            fields["job_status"] = job.get("status")
+            fields["queue_result"] = "enqueued"
             return job
+        except ActiveGenerationError:
+            raise
         except APIError as e:
-            # Unique violation on idempotency_key → treat as already queued.
             if e.code == "23505":
-                logger.warning(
-                    "Duplicate enqueue type=%s key_ref=%s db_code=%s",
-                    job_type,
-                    key_ref,
-                    e.code,
-                )
                 try:
-                    existing = (
-                        await client.table("background_jobs")
-                        .select("*")
-                        .eq("idempotency_key", idempotency_key)
-                        .eq("owner_id", owner_id)
-                        .maybe_single()
-                        .execute()
-                    )
-                except Exception:
-                    logger.exception(
-                        "Lookup after duplicate enqueue failed type=%s key_ref=%s",
-                        job_type,
-                        key_ref,
-                    )
+                    active = await self._active_job(client, owner_id)
+                except Exception as lookup_error:
+                    fields["outcome"] = "error"
+                    fields["error_type"] = type(lookup_error).__name__
+                    fields["error_message"] = scrub(str(lookup_error))
                     raise
 
-                if existing.data:
-                    logger.info(
-                        "Returning existing job id=%s type=%s key_ref=%s",
-                        existing.data.get("id"),
-                        job_type,
-                        key_ref,
-                    )
-                    return existing.data
+                if active:
+                    self._mark_busy(fields, active)
+                    raise ActiveGenerationError(active) from e
 
-                logger.error(
-                    "Unique conflict but no row found type=%s key_ref=%s",
-                    job_type,
-                    key_ref,
-                )
-                raise
-
-            logger.exception(
-                "PostgREST enqueue failed type=%s key_ref=%s db_code=%s",
-                job_type,
-                key_ref,
-                e.code,
-            )
+            fields["outcome"] = "error"
+            fields["error_type"] = type(e).__name__
+            fields["error_message"] = scrub(str(e))
+            fields["db_code"] = e.code
             raise
-        except Exception:
-            logger.exception(
-                "Unexpected enqueue failure type=%s key_ref=%s",
-                job_type,
-                key_ref,
-            )
+        except Exception as exc:
+            if "outcome" not in fields:
+                fields["outcome"] = "error"
+                fields["error_type"] = type(exc).__name__
+                fields["error_message"] = scrub(str(exc))
             raise
+        finally:
+            note(**fields)
 
     async def claim_job(self, *, worker_id: str) -> dict | None:
         if not worker_id or not worker_id.strip():
             raise ValueError("worker_id is required")
 
-        worker_ref = _log_ref(worker_id)
         client = await self._client()
 
         try:
@@ -148,36 +180,42 @@ class Queue:
                 "claim_background_job",
                 {"p_worker_id": worker_id},
             ).execute()
-        except Exception:
-            logger.exception("Claim failed worker_ref=%s", worker_ref)
+        except Exception as exc:
+            # Caller emits when this hop has no open event (claim runs before the job scope).
+            bind(
+                worker_id=worker_id,
+                error_type=type(exc).__name__,
+                error_message=scrub(str(exc)),
+                outcome="error",
+                queue_result="claim_failed",
+            )
             raise
 
         if not res.data:
-            logger.debug("Queue empty worker_ref=%s", worker_ref)
+            # Empty claim is normal idle polling — do not emit a wide-event hop.
             return None
 
         job = res.data[0]
-        logger.info(
-            "Claimed job id=%s type=%s worker_ref=%s attempts=%s",
-            job.get("id"),
-            job.get("job_type"),
-            worker_ref,
-            job.get("attempts"),
+        bind(
+            job_id=job.get("id"),
+            user_id=job.get("owner_id"),
+            worker_id=worker_id,
+            job_status=job.get("status"),
+            attempts=job.get("attempts"),
         )
         return job
 
     async def heartbeat(self, *, job_id: str, worker_id: str) -> bool:
-        """Refresh locked_at so cron does not treat a long-running job as stuck.
+        """Refresh ``locked_at`` so reclaim cron does not treat a long job as stuck.
 
-        Returns True if this worker still owns the running job; False if the
-        row was not updated (lost lock, completed elsewhere, or wrong worker).
+        Returns True while this worker still owns the running row; False if the
+        lock was lost, the job finished elsewhere, or the worker id does not match.
         """
         if not job_id or not str(job_id).strip():
             raise ValueError("job_id is required")
         if not worker_id or not worker_id.strip():
             raise ValueError("worker_id is required")
 
-        worker_ref = _log_ref(worker_id)
         now = datetime.now(timezone.utc).isoformat()
         client = await self._client()
 
@@ -191,27 +229,33 @@ class Queue:
                 .select("id")
                 .execute()
             )
-        except Exception:
-            logger.exception(
-                "Heartbeat failed job_id=%s worker_ref=%s",
-                job_id,
-                worker_ref,
-            )
+        except Exception as exc:
+            if current_event() is None:
+                note(
+                    job_id=job_id,
+                    worker_id=worker_id,
+                    error_type=type(exc).__name__,
+                    error_message=scrub(str(exc)),
+                    outcome="error",
+                )
+            else:
+                bind(
+                    job_id=job_id,
+                    worker_id=worker_id,
+                    error_type=type(exc).__name__,
+                    error_message=scrub(str(exc)),
+                )
             raise
 
         owned = bool(res.data)
         if owned:
-            logger.debug(
-                "Heartbeat ok job_id=%s worker_ref=%s",
-                job_id,
-                worker_ref,
-            )
+            bind(job_id=job_id, worker_id=worker_id)
         else:
-            logger.warning(
-                "Heartbeat missed job_id=%s worker_ref=%s "
-                "(lock lost or not running)",
-                job_id,
-                worker_ref,
+            bind(
+                job_id=job_id,
+                worker_id=worker_id,
+                lost_lock_job_id=job_id,
+                error_type="JobLockLost",
             )
         return owned
 
@@ -226,9 +270,9 @@ class Queue:
         if not worker_id or not worker_id.strip():
             raise ValueError("worker_id is required")
 
-        worker_ref = _log_ref(worker_id)
         now = datetime.now(timezone.utc).isoformat()
         client = await self._client()
+        fields: dict[str, Any] = {"job_id": job_id, "worker_id": worker_id}
 
         try:
             res = (
@@ -248,29 +292,26 @@ class Queue:
                 .select("id")
                 .execute()
             )
-        except Exception:
-            logger.exception(
-                "Complete failed job_id=%s worker_ref=%s",
-                job_id,
-                worker_ref,
-            )
+        except Exception as exc:
+            fields["outcome"] = "error"
+            fields["error_type"] = type(exc).__name__
+            fields["error_message"] = scrub(str(exc))
             raise
-
-        done = bool(res.data)
-        if done:
-            logger.info(
-                "Completed job id=%s worker_ref=%s",
-                job_id,
-                worker_ref,
-            )
         else:
-            logger.warning(
-                "Complete missed job_id=%s worker_ref=%s "
-                "(lock lost or not running)",
-                job_id,
-                worker_ref,
-            )
-        return done
+            done = bool(res.data)
+            if done:
+                fields["outcome"] = "success"
+                fields["queue_result"] = "succeeded"
+                fields["job_status"] = QueueStatus.succeeded.value
+            else:
+                fields["outcome"] = "error"
+                fields["error_type"] = "JobCompleteMissed"
+                fields["lost_lock_job_id"] = job_id
+                fields["queue_result"] = "complete_missed"
+                fields["lock_lost"] = True
+            return done
+        finally:
+            note(**fields)
 
     async def fail_job(
         self,
@@ -290,10 +331,15 @@ class Queue:
         if not worker_id or not worker_id.strip():
             raise ValueError("worker_id is required")
 
-        worker_ref = _log_ref(worker_id)
-        error_note = (error or "unknown error").strip()[:2000] or "unknown error"
+        error_note = scrub(error or "unknown error", limit=2000) or "unknown error"
         now = datetime.now(timezone.utc)
         client = await self._client()
+        fields: dict[str, Any] = {
+            "job_id": job_id,
+            "worker_id": worker_id,
+            "error_message": scrub(error_note),
+            "outcome": "error",
+        }
 
         try:
             current = (
@@ -305,38 +351,36 @@ class Queue:
                 .maybe_single()
                 .execute()
             )
-        except Exception:
-            logger.exception(
-                "Fail lookup failed job_id=%s worker_ref=%s",
-                job_id,
-                worker_ref,
-            )
+        except Exception as exc:
+            fields["error_type"] = type(exc).__name__
+            fields["error_message"] = scrub(str(exc))
+            note(**fields)
             raise
 
         if not current.data:
-            logger.warning(
-                "Fail missed job_id=%s worker_ref=%s "
-                "(lock lost or not running)",
-                job_id,
-                worker_ref,
-            )
+            fields["error_type"] = "JobFailMissed"
+            fields["lost_lock_job_id"] = job_id
+            note(**fields)
             return False
 
         attempts = int(current.data.get("attempts") or 0)
         will_retry = retry and attempts < max_attempts
+        fields["attempts"] = attempts
 
         if will_retry:
-            # Exponential backoff: 30s, 60s, 120s… capped at 15 minutes.
+            # 30s, 60s, 120s… capped at 15 minutes — backs off under sustained failure.
             delay_seconds = min(30 * (2 ** max(attempts - 1, 0)), 15 * 60)
+            available_at = (now + timedelta(seconds=delay_seconds)).isoformat()
             patch = {
                 "status": QueueStatus.queued.value,
                 "locked_at": None,
                 "locked_by": None,
-                "available_at": (now + timedelta(seconds=delay_seconds)).isoformat(),
+                "available_at": available_at,
                 "last_error": error_note,
                 "updated_at": now.isoformat(),
             }
-            outcome = "requeued"
+            fields["available_at"] = available_at
+            fields["queue_result"] = "requeued"
         else:
             patch = {
                 "status": QueueStatus.dead.value,
@@ -345,7 +389,7 @@ class Queue:
                 "last_error": error_note,
                 "updated_at": now.isoformat(),
             }
-            outcome = "dead"
+            fields["queue_result"] = "dead"
 
         try:
             res = (
@@ -357,35 +401,22 @@ class Queue:
                 .select("id, status, attempts, available_at")
                 .execute()
             )
-        except Exception:
-            logger.exception(
-                "Fail update failed job_id=%s worker_ref=%s outcome=%s",
-                job_id,
-                worker_ref,
-                outcome,
-            )
+        except Exception as exc:
+            fields["error_type"] = type(exc).__name__
+            fields["error_message"] = scrub(str(exc))
+            note(**fields)
             raise
 
         done = bool(res.data)
-        if done:
-            logger.warning(
-                "Failed job id=%s worker_ref=%s outcome=%s attempts=%s",
-                job_id,
-                worker_ref,
-                outcome,
-                attempts,
-            )
-        else:
-            logger.warning(
-                "Fail race job_id=%s worker_ref=%s (row changed during fail)",
-                job_id,
-                worker_ref,
-            )
+        if not done:
+            fields["error_type"] = "JobFailRace"
+            fields["lost_lock_job_id"] = job_id
+        note(**fields)
         return done
 
 
 def get_queue(supabase_client: AsyncServiceSupabaseDep) -> Queue:
-    """FastAPI dependency: Queue backed by the secret-key async Supabase client."""
+    """FastAPI dependency: queue using the secret-key async Supabase client."""
     return Queue(supabase_client)
 
 

@@ -1,3 +1,4 @@
+import { requestId } from "@/lib/log"
 import { supabase } from "@/lib/supabase"
 import { formatFileSize } from "@/lib/format-file-size"
 import type {
@@ -41,10 +42,14 @@ async function getAccessToken(): Promise<string> {
   return token
 }
 
-async function authHeaders(json = false): Promise<HeadersInit> {
+async function authHeaders(
+  json = false,
+  correlationId = requestId()
+): Promise<HeadersInit> {
   const token = await getAccessToken()
   const headers: Record<string, string> = {
     Authorization: `Bearer ${token}`,
+    "x-request-id": correlationId,
   }
   if (json) {
     headers["Content-Type"] = "application/json"
@@ -89,7 +94,7 @@ export async function uploadFileApi(
     return { ...data, role: "reference" }
   }
 
-  // Mock path (VITE_USE_MOCK=true)
+  // Mock path when VITE_USE_MOCK=true (no backend required).
   return mockUpload(file, onProgress)
 }
 
@@ -153,7 +158,7 @@ export async function generateRevisionsApi(
       system_prompt: systemPrompt,
     }
 
-    // Prefer JSON when we have text; if only a File, send multipart.
+    // Prefer JSON when we already have text; multipart only when we have a File.
     if (targetFile && !targetText) {
       const formData = new FormData()
       formData.append("instruction", payload.prompt)
@@ -230,9 +235,10 @@ export async function reviewDocumentApi(
   assertBackendConfigured()
 
   if (isLiveApi()) {
+    const correlationId = requestId()
     const res = await fetch(`${API_BASE_URL}/cloud/run`, {
       method: "POST",
-      headers: await authHeaders(true),
+      headers: await authHeaders(true, correlationId),
       body: JSON.stringify({
         ...request,
         target_stored: false,
@@ -241,14 +247,15 @@ export async function reviewDocumentApi(
     })
 
     if (!res.ok) {
-      const detail = await res.text().catch(() => res.statusText)
-      throw new Error(`Review failed (${res.status}): ${detail}`)
+      const error = new Error(`Review failed (${res.status})`)
+      Object.assign(error, { requestId: correlationId, statusCode: res.status })
+      throw error
     }
 
     return await res.json()
   }
 
-  // Mock: empty payload so UI can keep local simulation
+  // Mock returns empty so the page can keep its local simulation path.
   return {}
 }
 

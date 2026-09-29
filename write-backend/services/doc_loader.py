@@ -1,17 +1,16 @@
-"""
-Document loading for Writr reference ingest.
+"""Document loading for Writr reference ingest.
 
-Job of this module: turn a file, upload bytes, pasted text, or a URL into
-plain text + metadata that Chunker.chunk(...) can consume.
+Turns a file, upload bytes, pasted text, or URL into plain text + metadata
+that ``Chunker.chunk(...)`` can consume.
 
-Why it exists:
-  FastAPI routes should not care whether the source was a PDF, DOCX, or
-  webpage — they always get a LoadedDocument with .text and .metadata.
+Routes should not care whether the source was a PDF, DOCX, or webpage —
+they always receive a ``LoadedDocument`` with ``.text`` and ``.metadata``.
 """
 
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import tempfile
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -27,21 +26,35 @@ from langchain_community.document_loaders import (
     WebBaseLoader,
 )
 
-from utils.log import logger
+from utils.log import bind, note, scrub
+
+
+def _source_digest(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _load_failure(source: str, exc: BaseException, message: str) -> None:
+    """Record a load failure on the open wide event without the raw path or URL."""
+    note(
+        operation="document_load",
+        source_digest=_source_digest(source),
+        failure_stage="document_load",
+        error_type=type(exc).__name__,
+        error_message=scrub(message),
+        outcome="error",
+    )
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
-# File kinds we accept. Kept as a Literal so type-checkers catch typos.
-# We deliberately avoid Unstructured* loaders to keep dependencies light.
+# Accepted kinds as a Literal so type-checkers catch typos.
+# Unstructured* loaders are avoided on purpose to keep dependencies light.
 FileKind = Literal["pdf", "docx", "txt", "md"]
 
-# Lookup set for fast "is this extension allowed?" checks.
 SUPPORTED_EXTENSIONS: frozenset[str] = frozenset({".pdf", ".docx", ".txt", ".md"})
 
-# After scraping a URL, if we got fewer characters than this, the page is
-# almost certainly a JS shell (empty HTML shell) rather than real article text.
+# Scrapes shorter than this are almost certainly a JS shell, not article text.
 MIN_URL_CHARS = 200
 
 
@@ -90,45 +103,55 @@ class DocLoader:
         """
         path = Path(file_path)
         if not path.is_file():
-            logger.error("Document path not found: %s", path)
+            _load_failure(str(path), DocLoaderError("File not found"), "File not found")
             raise DocLoaderError(f"File not found: {path}")
 
         suffix = path.suffix.lower()
         if suffix not in SUPPORTED_EXTENSIONS:
-            logger.error("Unsupported file type: %s", path)
+            _load_failure(
+                str(path),
+                DocLoaderError("Unsupported file type"),
+                f"Unsupported file type: {suffix}",
+            )
             raise DocLoaderError(
                 f"Unsupported file type: {suffix}. "
                 f"Supported: {', '.join(sorted(SUPPORTED_EXTENSIONS))}"
             )
 
         try:
-            # Pick the lightest loader that can read this format.
+            # Prefer the lightest LangChain loader that can read this format.
             if suffix == ".pdf":
                 docs = PyPDFLoader(str(path)).load()
             elif suffix == ".docx":
                 docs = Docx2txtLoader(str(path)).load()
             else:
-                # .txt and .md — raw text; Chunker owns markdown structure later.
+                # Raw text; Chunker owns markdown structure later.
                 docs = TextLoader(str(path), encoding="utf-8").load()
         except DocLoaderError:
-            # Already our error — bubble up unchanged.
             raise
         except Exception as e:
-            # Anything else from LangChain / the OS → wrap for the API layer.
-            logger.error("Failed to load %s: %s", path, e)
+            # Wrap LangChain / OS errors so the API layer sees DocLoaderError only.
+            _load_failure(str(path), e, "Failed to load document")
             raise DocLoaderError(f"Failed to load {path.name}: {e}") from e
 
         text = self._join_docs(docs)
         if not text.strip():
             raise DocLoaderError(f"No extractable text in {path.name}")
 
+        encoded = text.encode("utf-8")
+        bind(
+            source_digest=_source_digest(str(path)),
+            content_sha256=hashlib.sha256(encoded).hexdigest(),
+            content_bytes=len(encoded),
+            mime_hint=suffix.lstrip("."),
+        )
+
         return LoadedDocument(
             text=text,
             metadata={
                 "source": str(path),
                 "filename": path.name,
-                # "pdf" / "docx" / "txt" / "md" — useful for analytics later
-                "mime_hint": suffix.lstrip("."),
+                "mime_hint": suffix.lstrip("."),  # e.g. pdf — useful for analytics
             },
         )
 
@@ -150,13 +173,13 @@ class DocLoader:
                 f"Supported: {', '.join(sorted(SUPPORTED_EXTENSIONS))}"
             )
 
-        # TemporaryDirectory cleans itself up when the ``with`` block exits.
+        # LangChain PDF/DOCX loaders need a real path; temp dir is cleaned on exit.
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / Path(filename).name
             path.write_bytes(data)
             loaded = self.load(path)
 
-        # Prefer the name the user uploaded over the ephemeral temp path.
+        # Keep the client's original filename, not the ephemeral temp path.
         return LoadedDocument(
             text=loaded.text,
             metadata={
@@ -174,6 +197,13 @@ class DocLoader:
         cleaned = text.strip()
         if not cleaned:
             raise DocLoaderError("Text content is empty")
+
+        encoded = cleaned.encode("utf-8")
+        bind(
+            content_sha256=hashlib.sha256(encoded).hexdigest(),
+            content_bytes=len(encoded),
+            mime_hint="text",
+        )
 
         meta: dict[str, Any] = {"mime_hint": "text"}
         if filename:
@@ -193,10 +223,9 @@ class DocLoader:
         """
         normalized = self._validate_url(url)
         try:
-            # WebBaseLoader downloads HTML and pulls readable text nodes.
             docs = WebBaseLoader(normalized).load()
         except Exception as e:
-            logger.error("Failed to load URL %s: %s", normalized, e)
+            _load_failure(normalized, e, "Failed to fetch URL")
             raise DocLoaderError(f"Failed to fetch URL: {e}") from e
 
         text = self._join_docs(docs)
@@ -206,7 +235,15 @@ class DocLoader:
                 "The page may be JavaScript-rendered — paste the article or upload a file."
             )
 
-        # Best-effort page title from loader metadata (may be missing).
+        encoded = text.encode("utf-8")
+        bind(
+            source_digest=_source_digest(normalized),
+            content_sha256=hashlib.sha256(encoded).hexdigest(),
+            content_bytes=len(encoded),
+            mime_hint="html",
+        )
+
+        # Title from loader metadata when present; else last path segment / "web".
         title = None
         if docs and isinstance(docs[0].metadata, dict):
             title = docs[0].metadata.get("title")
@@ -215,7 +252,6 @@ class DocLoader:
             text=text,
             metadata={
                 "source": normalized,
-                # Fall back to last path segment, then a generic "web" label.
                 "filename": title or urlparse(normalized).path.rsplit("/", 1)[-1] or "web",
                 "mime_hint": "html",
                 # URL imports stay private — never published to a shared catalog.
@@ -261,13 +297,9 @@ class DocLoader:
 
 @lru_cache(maxsize=1)
 def get_doc_loader() -> DocLoader:
-    """Return a single shared DocLoader instance (cheap to create, but cache anyway).
-
-    Used with FastAPI's Depends(...) so every request gets the same object
-    without rebuilding it each time.
-    """
+    """Shared DocLoader for FastAPI ``Depends`` (one instance process-wide)."""
     return DocLoader()
 
 
-# Type alias for route signatures: ``loader: DocLoaderDep``.
+# Route signature helper: ``loader: DocLoaderDep``.
 DocLoaderDep = Annotated[DocLoader, Depends(get_doc_loader)]

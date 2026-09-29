@@ -1,10 +1,9 @@
-"""
-Supabase clients and auth helpers for the FastAPI app.
+"""Supabase clients and auth helpers for the FastAPI app.
 
-What this module provides:
-  1. Sync / async clients signed with the *publishable* (anon) key
-  2. A trusted *service* async client signed with the secret key (bypasses RLS)
-  3. A per-request *user* async client that forwards the caller's JWT (RLS applies)
+Provides:
+  1. Sync / async clients with the publishable (anon) key
+  2. A trusted service async client with the secret key (bypasses RLS)
+  3. A per-request user async client that forwards the caller's JWT (RLS applies)
   4. ``get_current_user`` / ``get_current_user_id`` — validate Bearer JWT
 
 Rule of thumb:
@@ -13,6 +12,7 @@ Rule of thumb:
     (always filter by owner yourself when using the service client)
 """
 
+import uuid
 from collections.abc import AsyncIterator
 from typing import Annotated
 
@@ -23,7 +23,7 @@ from supabase_auth.errors import AuthApiError
 from supabase_auth.types import User
 
 from core.config import get_settings
-from utils.log import logger
+from utils.log import bind, note, scrub
 
 settings = get_settings()
 
@@ -45,16 +45,25 @@ _supabase_client: Client | None = None
 _async_supabase_client: AsyncClient | None = None
 _async_service_supabase_client: AsyncClient | None = None
 
-# Eagerly create the sync client at import time when credentials exist.
-# If .env is not loaded yet, we log a warning and initialize lazily later.
+# Eager sync client when credentials exist at import; otherwise lazy init later.
 try:
     _url, _key = _get_supabase_credentials()
     _supabase_client = create_client(_url, _key)
-    logger.info("Supabase sync client initialized")
+    bind(
+        supabase_client_id=str(uuid.uuid4()),
+        client_kind="sync_publishable",
+    )
 except Exception as _e:
-    logger.warning("Supabase client deferred initialization: %s", _e)
+    note(
+        operation="supabase_client_init",
+        supabase_client_id=str(uuid.uuid4()),
+        client_kind="sync_publishable",
+        error_type=type(_e).__name__,
+        error_message=scrub(str(_e)),
+        outcome="error",
+    )
 
-# Convenience export for scripts / notebooks that import ``from services.supabase import supabase``.
+# Scripts/notebooks: ``from services.supabase import supabase``.
 supabase: Client | None = _supabase_client
 
 
@@ -72,13 +81,23 @@ def get_supabase() -> Client:
     """
     global _supabase_client
     if _supabase_client is None:
-        # Lazy init — credentials may have become available after import.
+        # Credentials may arrive after import (late .env load).
         try:
             url, key = _get_supabase_credentials()
             _supabase_client = create_client(url, key)
-            logger.info("Supabase sync client initialized")
+            bind(
+                supabase_client_id=str(uuid.uuid4()),
+                client_kind="sync_publishable",
+            )
         except Exception as e:
-            logger.error("Failed to initialize Supabase client: %s", e)
+            note(
+                operation="supabase_client_init",
+                supabase_client_id=str(uuid.uuid4()),
+                client_kind="sync_publishable",
+                error_type=type(e).__name__,
+                error_message=scrub(str(e)),
+                outcome="error",
+            )
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Supabase client not initialized: {e}",
@@ -102,9 +121,19 @@ async def get_async_supabase() -> AsyncClient:
         try:
             url, key = _get_supabase_credentials()
             _async_supabase_client = await create_async_client(url, key)
-            logger.info("Supabase async client initialized")
+            bind(
+                supabase_client_id=str(uuid.uuid4()),
+                client_kind="async_publishable",
+            )
         except Exception as e:
-            logger.error("Failed to initialize Supabase async client: %s", e)
+            note(
+                operation="supabase_client_init",
+                supabase_client_id=str(uuid.uuid4()),
+                client_kind="async_publishable",
+                error_type=type(e).__name__,
+                error_message=scrub(str(e)),
+                outcome="error",
+            )
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Supabase async client not initialized: {e}",
@@ -112,15 +141,14 @@ async def get_async_supabase() -> AsyncClient:
     return _async_supabase_client
 
 
-# Shorthand types for route signatures: ``client: SupabaseDep``.
+# Route signature helpers: ``client: SupabaseDep``.
 SupabaseDep = Annotated[Client, Depends(get_supabase)]
 SupabaseClient = SupabaseDep  # alias kept for older imports
 
 AsyncSupabaseDep = Annotated[AsyncClient, Depends(get_async_supabase)]
 AsyncSupabaseClient = AsyncSupabaseDep
 
-# Extract ``Authorization: Bearer <jwt>`` from the request.
-# auto_error=False → we raise our own 401 with a clearer message.
+# auto_error=False so we raise our own 401 with a clearer message.
 _bearer_security = HTTPBearer(auto_error=False)
 
 
@@ -160,17 +188,28 @@ def get_current_user(
                 detail="Invalid authentication token",
                 headers={"WWW-Authenticate": "Bearer"},
             )
+        bind(user_id=str(user_response.user.id) if user_response.user.id else None)
         return user_response.user
     except AuthApiError as e:
-        # Expired / revoked / malformed JWT from Supabase Auth.
-        logger.warning("Supabase auth error: %s", e)
+        # Never log the token; scrub provider text in case it echoes credentials.
+        bind(
+            operation="auth_get_user",
+            error_type=type(e).__name__,
+            error_message=scrub(getattr(e, "message", None) or str(e)),
+            outcome="error",
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Invalid or expired authentication token: {e.message}",
             headers={"WWW-Authenticate": "Bearer"},
         ) from e
     except Exception as e:
-        logger.error("Unexpected error validating token: %s", e)
+        bind(
+            operation="auth_get_user",
+            error_type=type(e).__name__,
+            error_message=scrub(str(e)),
+            outcome="error",
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",
@@ -183,10 +222,7 @@ CurrentUser = CurrentUserDep  # alias kept for older imports
 
 
 def get_current_user_id(user: CurrentUserDep) -> str:
-    """Return the authenticated user's UUID string.
-
-    Thin wrapper over ``get_current_user`` for routes / services that only
-    need ``owner_id`` (enqueue, vector store, etc.).
+    """Authenticated user UUID for routes that only need ``owner_id``.
 
     Usage:
         @router.post("/notes")
@@ -218,7 +254,14 @@ def _get_secret_key() -> str:
     """
     key = get_settings().supabase_admin_key
     if not key:
-        logger.error("Supabase secret key is missing in Settings.")
+        note(
+            operation="supabase_client_init",
+            supabase_client_id=str(uuid.uuid4()),
+            client_kind="async_service",
+            error_type="MissingSecret",
+            error_message="Supabase secret key is not configured.",
+            outcome="error",
+        )
         raise ValueError("SUPABASE_SECRET_KEY must be set in environment variables.")
     return key
 
@@ -241,13 +284,23 @@ async def get_async_service_supabase() -> AsyncClient:
                 url,
                 secret_key,
                 options=AsyncClientOptions(
-                    persist_session=False,   # no on-disk session for a server process
+                    persist_session=False,  # server process, not an end-user login
                     auto_refresh_token=False,
                 ),
             )
-            logger.info("Supabase async secret-key client initialized")
+            bind(
+                supabase_client_id=str(uuid.uuid4()),
+                client_kind="async_service",
+            )
         except Exception as e:
-            logger.error("Failed to initialize Supabase secret-key client: %s", e)
+            note(
+                operation="supabase_client_init",
+                supabase_client_id=str(uuid.uuid4()),
+                client_kind="async_service",
+                error_type=type(e).__name__,
+                error_message=scrub(str(e)),
+                outcome="error",
+            )
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Supabase service client not initialized: {e}",
@@ -284,7 +337,7 @@ async def get_async_user_supabase(
             options=AsyncClientOptions(
                 persist_session=False,
                 auto_refresh_token=False,
-                # Forward the user's JWT + project apikey on every call.
+                # JWT + apikey on every call so Postgres RLS sees auth.uid().
                 headers={
                     "Authorization": f"Bearer {credentials.credentials}",
                     "apikey": key,
@@ -292,7 +345,14 @@ async def get_async_user_supabase(
             ),
         )
     except Exception as e:
-        logger.error("Failed to initialize user-scoped Supabase client: %s", e)
+        bind(
+            operation="supabase_client_init",
+            supabase_client_id=str(uuid.uuid4()),
+            client_kind="async_user",
+            error_type=type(e).__name__,
+            error_message=scrub(str(e)),
+            outcome="error",
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Supabase user client not initialized: {e}",
