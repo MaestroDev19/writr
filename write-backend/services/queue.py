@@ -2,10 +2,12 @@ import hashlib
 import logging
 from datetime import datetime, timedelta, timezone
 from enum import StrEnum
+from typing import Annotated
 
+from fastapi import Depends
 from postgrest.exceptions import APIError
 
-from services.supabase import get_async_service_supabase
+from services.supabase import AsyncServiceSupabaseDep, get_async_service_supabase
 
 logger = logging.getLogger(__name__)
 
@@ -379,3 +381,11 @@ class Queue:
                 worker_ref,
             )
         return done
+
+
+def get_queue(supabase_client: AsyncServiceSupabaseDep) -> Queue:
+    """FastAPI dependency: Queue backed by the secret-key async Supabase client."""
+    return Queue(supabase_client)
+
+
+QueueDep = Annotated[Queue, Depends(get_queue)]
