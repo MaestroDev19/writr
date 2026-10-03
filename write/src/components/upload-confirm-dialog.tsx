@@ -65,8 +65,8 @@ export function UploadConfirmDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
-      <DialogContent className="max-h-[90vh] w-[calc(100vw-2rem)] overflow-y-auto overscroll-contain rounded-[var(--radius-xl)] border-border bg-card p-4 shadow-xl sm:max-w-lg sm:p-6">
-        <DialogHeader className="gap-1.5 pb-2">
+      <DialogContent className="max-h-[min(90vh,40rem)] w-full min-w-0 max-w-[calc(100%-2rem)] overflow-x-hidden overflow-y-auto overscroll-contain rounded-[var(--radius-xl)] border-border bg-card p-4 shadow-xl *:min-w-0 sm:max-w-lg sm:p-6">
+        <DialogHeader className="gap-1.5 pe-10 pb-2">
           <div className="flex items-center gap-2">
             <div className="flex size-8 items-center justify-center rounded-[var(--radius)] bg-primary/10 text-primary">
               {mode === "generate-target" || selectedRole === "target" ? (
@@ -93,31 +93,31 @@ export function UploadConfirmDialog({
         </DialogHeader>
 
         <div className="flex flex-col gap-3 py-2">
-          <div className="flex items-center justify-between text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-            <span>
+          <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+            <span className="min-w-0">
               {fileCount === 1 ? "Selected file" : `Selected files (${fileCount})`}
             </span>
-            <span className="tabular-nums">Total: {formatFileSize(totalBytes)}</span>
+            <span className="shrink-0 tabular-nums">Total: {formatFileSize(totalBytes)}</span>
           </div>
 
-          <div className="max-h-48 overflow-y-auto overscroll-contain rounded-[var(--radius)] border border-border bg-muted/30 p-2.5">
-            <ul className="flex flex-col gap-1">
+          <div className="max-h-48 min-w-0 overflow-x-hidden overflow-y-auto overscroll-contain rounded-[var(--radius)] border border-border bg-muted/30 p-2.5">
+            <ul className="flex min-w-0 flex-col gap-1">
               {pendingUpload.files.map((file, idx) => (
                 <li
                   key={`${file.name}-${idx}`}
-                  className="flex items-center justify-between gap-2 px-2 py-1.5 text-xs"
+                  className="grid min-w-0 grid-cols-[1.75rem_minmax(0,1fr)_auto] items-center gap-2 px-2 py-1.5 text-xs"
                 >
-                  <div className="flex min-w-0 items-center gap-2.5">
-                    <div className="flex size-7 shrink-0 items-center justify-center rounded-[var(--radius-sm)] border border-border bg-background text-primary">
-                      {file.name.endsWith(".md") || file.name.endsWith(".txt") ? (
-                        <FileCode2 className="size-3.5" aria-hidden="true" />
-                      ) : (
-                        <FileText className="size-3.5" aria-hidden="true" />
-                      )}
-                    </div>
-                    <span className="truncate font-medium text-foreground">{file.name}</span>
+                  <div className="flex size-7 items-center justify-center rounded-[var(--radius-sm)] border border-border bg-background text-primary">
+                    {file.name.endsWith(".md") || file.name.endsWith(".txt") ? (
+                      <FileCode2 className="size-3.5" aria-hidden="true" />
+                    ) : (
+                      <FileText className="size-3.5" aria-hidden="true" />
+                    )}
                   </div>
-                  <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">
+                  <span className="min-w-0 truncate font-medium text-foreground" title={file.name}>
+                    {file.name}
+                  </span>
+                  <span className="text-[11px] text-muted-foreground tabular-nums">
                     {formatFileSize(file.size)}
                   </span>
                 </li>
@@ -214,7 +214,7 @@ export function UploadConfirmDialog({
           ) : null}
         </div>
 
-        <DialogFooter className="flex flex-col-reverse gap-2 border-t border-border pt-3 sm:flex-row sm:justify-end">
+        <DialogFooter className="min-w-0 flex-wrap gap-2 border-t border-border pt-3">
           <Button
             type="button"
             variant="outline"

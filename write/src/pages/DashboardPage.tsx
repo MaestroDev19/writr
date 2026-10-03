@@ -1,8 +1,15 @@
 import * as React from "react"
 import { Link, useNavigate } from "react-router-dom"
+import { useMutation } from "@tanstack/react-query"
 import { useAuth } from "@/contexts/auth-context"
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
+import { cn } from "cn"
 import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { uploadLink, uploadText } from "@/api"
+import { getApiErrorMessage } from "@/lib/axios"
+import { formatFileSize } from "@/lib/format-file-size"
 import {
   Sparkles,
   MessageSquareQuote,
@@ -12,6 +19,8 @@ import {
   UploadCloud,
   FileText,
   FileCode2,
+  AlignLeft,
+  Link2,
   Trash2,
   ArrowUpRight,
   Plus,
@@ -28,6 +37,33 @@ import {
 import { EmbeddingMonitor } from "@/components/embedding-monitor"
 
 type LibraryState = "ready" | "updating" | "needs-update"
+type NoteInput = "files" | "text" | "link"
+
+const NOTE_INPUTS: { id: NoteInput; label: string }[] = [
+  { id: "files", label: "Files" },
+  { id: "text", label: "Text" },
+  { id: "link", label: "Link" },
+]
+
+function noteTitle(text: string): string {
+  const line = text
+    .split(/\r?\n/)
+    .map((part) => part.trim())
+    .find(Boolean)
+  const clean = (line ?? "Pasted note").replace(/^#+\s*/, "")
+  return clean.length > 72 ? `${clean.slice(0, 69)}…` : clean
+}
+
+function parseHttpUrl(value: string): string | null {
+  try {
+    const url = new URL(value.trim())
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null
+    if (!url.hostname) return null
+    return url.toString()
+  } catch {
+    return null
+  }
+}
 
 export default function DashboardPage() {
   const { user, profile } = useAuth()
@@ -37,6 +73,7 @@ export default function DashboardPage() {
     totalFiles,
     totalChunks,
     addReferenceFiles,
+    addReferenceEntry,
     deleteReferenceDocument,
     reindexAll,
     isEmbedding,
@@ -51,7 +88,16 @@ export default function DashboardPage() {
   const [isConfirmOpen, setIsConfirmOpen] = React.useState(false)
   const [needsUpdate, setNeedsUpdate] = React.useState(false)
   const [isDragging, setIsDragging] = React.useState(false)
+  const [noteInput, setNoteInput] = React.useState<NoteInput>("files")
+  const [noteText, setNoteText] = React.useState("")
+  const [noteLink, setNoteLink] = React.useState("")
+  const [textError, setTextError] = React.useState<string | null>(null)
+  const [linkError, setLinkError] = React.useState<string | null>(null)
+  const [saveMessage, setSaveMessage] = React.useState<string | null>(null)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
+
+  const textUpload = useMutation({ mutationFn: uploadText })
+  const linkUpload = useMutation({ mutationFn: uploadLink })
 
   const libraryState: LibraryState = isEmbedding
     ? "updating"
@@ -86,6 +132,58 @@ export default function DashboardPage() {
     })
     setIsConfirmOpen(true)
   }, [])
+
+  const handleAddText = React.useCallback(
+    async (event: React.FormEvent<HTMLFormElement>) => {
+      event.preventDefault()
+      const text = noteText.trim()
+      if (!text) {
+        setTextError("Paste some text first.")
+        return
+      }
+      setTextError(null)
+      setSaveMessage(null)
+      try {
+        await textUpload.mutateAsync(text)
+        addReferenceEntry({
+          name: noteTitle(text),
+          size: formatFileSize(new TextEncoder().encode(text).length),
+          source: "text",
+        })
+        setNoteText("")
+        setSaveMessage("Note saved. Writr is preparing it.")
+      } catch (error) {
+        setTextError(getApiErrorMessage(error, "Could not add this note."))
+      }
+    },
+    [addReferenceEntry, noteText, textUpload]
+  )
+
+  const handleAddLink = React.useCallback(
+    async (event: React.FormEvent<HTMLFormElement>) => {
+      event.preventDefault()
+      const url = parseHttpUrl(noteLink)
+      if (!url) {
+        setLinkError("Enter a full link that starts with http:// or https://.")
+        return
+      }
+      setLinkError(null)
+      setSaveMessage(null)
+      try {
+        await linkUpload.mutateAsync(url)
+        addReferenceEntry({
+          name: url,
+          size: "Link",
+          source: "link",
+        })
+        setNoteLink("")
+        setSaveMessage("Link saved. Writr is preparing it.")
+      } catch (error) {
+        setLinkError(getApiErrorMessage(error, "Could not add this link."))
+      }
+    },
+    [addReferenceEntry, linkUpload, noteLink]
+  )
 
   const handleAddSample = React.useCallback(() => {
     const sampleNames = [
@@ -327,8 +425,8 @@ export default function DashboardPage() {
               <BookOpen className="size-4 text-primary" aria-hidden="true" />
               <h2 className="text-lg font-bold text-foreground">Notes library</h2>
             </div>
-            <p className="mt-1 text-xs text-muted-foreground sm:text-sm">
-              Upload character sheets, world lore, and research. Writr uses these when you write or review.
+            <p className="mt-1 max-w-xl text-xs leading-relaxed text-muted-foreground sm:text-sm">
+              Add files, paste text, or save a link. Writr uses these when you write or review.
             </p>
           </div>
 
@@ -360,72 +458,192 @@ export default function DashboardPage() {
         </div>
 
         <div
-          role="button"
-          tabIndex={0}
-          aria-label="Upload notes"
-          aria-describedby="notes-upload-help"
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault()
-              fileInputRef.current?.click()
-            }
+          role="tablist"
+          aria-label="How to add a note"
+          className="mt-5 grid grid-cols-3 gap-1 rounded-[var(--radius)] bg-muted p-1"
+          onKeyDown={(event) => {
+            const current = NOTE_INPUTS.findIndex((item) => item.id === noteInput)
+            if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return
+            event.preventDefault()
+            const direction = event.key === "ArrowRight" ? 1 : -1
+            const next = NOTE_INPUTS[(current + direction + NOTE_INPUTS.length) % NOTE_INPUTS.length]
+            setNoteInput(next.id)
+            document.getElementById(`notes-tab-${next.id}`)?.focus()
           }}
-          onDragOver={(e) => {
-            e.preventDefault()
-            setIsDragging(true)
-          }}
-          onDragLeave={() => setIsDragging(false)}
-          onDrop={(e) => {
-            e.preventDefault()
-            setIsDragging(false)
-            if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-              handleFilesSelected(Array.from(e.dataTransfer.files))
-            }
-          }}
-          onClick={() => fileInputRef.current?.click()}
-          className={`mt-5 flex min-h-[160px] flex-col items-center justify-center gap-3 rounded-[var(--radius)] border-2 border-dashed p-6 text-center transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring sm:min-h-[180px] sm:p-8 ${
-            isDragging
-              ? "border-primary bg-primary/5"
-              : "border-border hover:border-primary/50 hover:bg-muted/30"
-          }`}
         >
-          <input
-            type="file"
-            ref={fileInputRef}
-            className="hidden"
-            multiple
-            aria-label="Choose note files"
-            accept=".pdf,.docx,.txt,.md,.epub"
-            onChange={(e) => {
-              if (e.target.files && e.target.files.length > 0) {
-                handleFilesSelected(Array.from(e.target.files))
-                e.target.value = ""
+          {NOTE_INPUTS.map((item) => {
+            const selected = noteInput === item.id
+            const Icon = item.id === "files" ? FileText : item.id === "text" ? AlignLeft : Link2
+            return (
+              <button
+                key={item.id}
+                id={`notes-tab-${item.id}`}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                aria-controls={`notes-panel-${item.id}`}
+                tabIndex={selected ? 0 : -1}
+                onClick={() => setNoteInput(item.id)}
+                className={`inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-[calc(var(--radius)-2px)] text-sm font-medium transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring ${
+                  selected
+                    ? "bg-background text-foreground shadow-xs"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Icon className="size-4" aria-hidden="true" />
+                {item.label}
+              </button>
+            )
+          })}
+        </div>
+
+        <div
+          id="notes-panel-files"
+          role="tabpanel"
+          aria-labelledby="notes-tab-files"
+          hidden={noteInput !== "files"}
+          className="mt-4"
+        >
+          <label
+            onDragOver={(e) => {
+              e.preventDefault()
+              setIsDragging(true)
+            }}
+            onDragLeave={() => setIsDragging(false)}
+            onDrop={(e) => {
+              e.preventDefault()
+              setIsDragging(false)
+              if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                handleFilesSelected(Array.from(e.dataTransfer.files))
               }
             }}
-          />
-          <div className="flex size-12 items-center justify-center rounded-[var(--radius)] bg-primary/10 text-primary">
-            <UploadCloud className="size-6" aria-hidden="true" />
-          </div>
-          <div className="flex flex-col gap-1">
-            <h3 className="text-sm font-semibold text-foreground">
-              Add research notes
-            </h3>
-            <p id="notes-upload-help" className="max-w-sm text-xs text-muted-foreground">
-              PDF, Word, text, EPUB, or Markdown. Notes are saved to your account.
-            </p>
-          </div>
-          <Button
-            type="button"
-            size="sm"
-            onClick={(e) => {
-              e.stopPropagation()
-              fileInputRef.current?.click()
-            }}
+            className={`flex min-h-[160px] cursor-pointer flex-col items-center justify-center gap-3 rounded-[var(--radius)] border-2 border-dashed p-6 text-center transition-colors focus-within:ring-2 focus-within:ring-ring sm:min-h-[180px] sm:p-8 ${
+              isDragging
+                ? "border-primary bg-primary/5"
+                : "border-border hover:border-primary/50 hover:bg-muted/30"
+            }`}
           >
-            <UploadCloud data-icon="inline-start" />
-            Choose files
-          </Button>
+            <input
+              type="file"
+              ref={fileInputRef}
+              className="sr-only"
+              multiple
+              aria-label="Choose note files"
+              accept=".pdf,.docx,.txt,.md,.epub"
+              onChange={(e) => {
+                if (e.target.files && e.target.files.length > 0) {
+                  handleFilesSelected(Array.from(e.target.files))
+                  e.target.value = ""
+                }
+              }}
+            />
+            <div className="flex size-12 items-center justify-center rounded-[var(--radius)] bg-primary/10 text-primary">
+              <UploadCloud className="size-6" aria-hidden="true" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <h3 className="text-sm font-semibold text-foreground">Add research notes</h3>
+              <p id="notes-upload-help" className="max-w-sm text-xs leading-relaxed text-muted-foreground">
+                PDF, Word, text, EPUB, or Markdown. Drop files here or choose them.
+              </p>
+            </div>
+            <span className={cn(buttonVariants())}>
+              <UploadCloud data-icon="inline-start" />
+              Choose files
+            </span>
+          </label>
         </div>
+
+        <div
+          id="notes-panel-text"
+          role="tabpanel"
+          aria-labelledby="notes-tab-text"
+          hidden={noteInput !== "text"}
+          className="mt-4"
+        >
+          <form onSubmit={handleAddText} className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="note-text">Note</Label>
+              <textarea
+                id="note-text"
+                value={noteText}
+                rows={6}
+                placeholder="Paste lore, research, or a scene…"
+                autoComplete="off"
+                aria-invalid={textError ? true : undefined}
+                aria-describedby={textError ? "note-text-help note-text-error" : "note-text-help"}
+                onChange={(event) => {
+                  setNoteText(event.target.value)
+                  if (textError) setTextError(null)
+                  if (saveMessage) setSaveMessage(null)
+                }}
+                className="min-h-36 w-full resize-y rounded-[var(--radius)] border border-input bg-transparent px-3 py-2 text-base leading-relaxed outline-none transition-[color,box-shadow] placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 aria-invalid:border-destructive aria-invalid:ring-destructive/20 md:text-sm"
+              />
+              <p id="note-text-help" className="text-xs leading-relaxed text-muted-foreground">
+                Writr saves this with your notes and reads it when you write or review.
+              </p>
+              {textError ? (
+                <p id="note-text-error" role="alert" className="text-xs text-destructive">
+                  {textError}
+                </p>
+              ) : null}
+            </div>
+            <div className="flex justify-end">
+              <Button type="submit" disabled={textUpload.isPending || noteText.trim().length === 0}>
+                {textUpload.isPending ? "Adding…" : "Add note"}
+              </Button>
+            </div>
+          </form>
+        </div>
+
+        <div
+          id="notes-panel-link"
+          role="tabpanel"
+          aria-labelledby="notes-tab-link"
+          hidden={noteInput !== "link"}
+          className="mt-4"
+        >
+          <form onSubmit={handleAddLink} className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="note-link">Link</Label>
+              <Input
+                id="note-link"
+                type="url"
+                inputMode="url"
+                autoComplete="url"
+                placeholder="https://example.com/article"
+                value={noteLink}
+                aria-invalid={linkError ? true : undefined}
+                aria-describedby={linkError ? "note-link-help note-link-error" : "note-link-help"}
+                onChange={(event) => {
+                  setNoteLink(event.target.value)
+                  if (linkError) setLinkError(null)
+                  if (saveMessage) setSaveMessage(null)
+                }}
+              />
+              <p id="note-link-help" className="text-xs leading-relaxed text-muted-foreground">
+                A public page. Writr fetches it and saves it with your notes.
+              </p>
+              {linkError ? (
+                <p id="note-link-error" role="alert" className="text-xs text-destructive">
+                  {linkError}
+                </p>
+              ) : null}
+            </div>
+            <div className="flex justify-end">
+              <Button type="submit" disabled={linkUpload.isPending || noteLink.trim().length === 0}>
+                <Link2 data-icon="inline-start" />
+                {linkUpload.isPending ? "Adding…" : "Add link"}
+              </Button>
+            </div>
+          </form>
+        </div>
+
+        <p
+          className={saveMessage ? "mt-3 text-xs text-muted-foreground" : "sr-only"}
+          aria-live="polite"
+        >
+          {saveMessage}
+        </p>
 
         <div className="mt-5">
           <EmbeddingMonitor files={referenceDocuments} />
@@ -440,8 +658,8 @@ export default function DashboardPage() {
 
           <div className="divide-y divide-border border-y border-border">
             {referenceDocuments.length === 0 ? (
-              <div className="px-2 py-10 text-center text-xs text-muted-foreground">
-                No notes yet. Drop files above or choose files to get started.
+              <div className="px-2 py-10 text-center text-xs leading-relaxed text-muted-foreground">
+                No notes yet. Add a file, paste text, or save a link.
               </div>
             ) : (
               referenceDocuments.map((doc) => (
@@ -451,27 +669,34 @@ export default function DashboardPage() {
                 >
                   <div className="flex min-w-0 items-center gap-3">
                     <div className="flex size-9 shrink-0 items-center justify-center rounded-[var(--radius)] bg-muted text-foreground">
-                      {doc.name.endsWith(".md") || doc.name.endsWith(".txt") ? (
+                      {doc.source === "link" ? (
+                        <Link2 className="size-4 text-primary" aria-hidden="true" />
+                      ) : doc.source === "text" ? (
+                        <AlignLeft className="size-4 text-primary" aria-hidden="true" />
+                      ) : doc.name.endsWith(".md") || doc.name.endsWith(".txt") ? (
                         <FileCode2 className="size-4 text-primary" aria-hidden="true" />
                       ) : (
                         <FileText className="size-4 text-primary" aria-hidden="true" />
                       )}
                     </div>
                     <div className="min-w-0">
-                      <p className="truncate font-medium text-foreground">{doc.name}</p>
+                      <p className="truncate font-medium text-foreground" title={doc.name}>
+                        {doc.name}
+                      </p>
                       <p className="truncate text-[11px] text-muted-foreground tabular-nums">
                         {doc.size}
-                        {" · "}
-                        {doc.chunks} sections
+                        {doc.chunks > 0 ? ` · ${doc.chunks} sections` : null}
                       </p>
                     </div>
                   </div>
 
                   <div className="flex shrink-0 items-center gap-2">
-                    {doc.embeddingStatus === "embedding" ? (
+                    {doc.embeddingStatus === "queued" || doc.embeddingStatus === "embedding" ? (
                       <Badge variant="secondary">
                         <RefreshCw data-icon="inline-start" className="animate-spin" />
-                        Preparing {doc.embeddingProgress}%
+                        {doc.embeddingStatus === "embedding"
+                          ? `Preparing ${doc.embeddingProgress}%`
+                          : "Preparing"}
                       </Badge>
                     ) : doc.isStale ? (
                       <Badge variant="outline" className="border-amber-500/30 text-amber-700 dark:text-amber-400">

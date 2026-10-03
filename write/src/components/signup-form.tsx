@@ -1,6 +1,12 @@
 import { useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
-import { useForm, Controller, useWatch } from "react-hook-form"
+import {
+  useForm,
+  Controller,
+  useWatch,
+  useFormState,
+  type Control,
+} from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { AlertCircle, CheckCircle2, Mail } from "lucide-react"
 import { cn } from "cn"
@@ -18,11 +24,37 @@ import { AvatarUpload } from "@/components/avatar-upload"
 import { signupSchema, type SignupFormValues } from "@/types/auth"
 import { useAuth } from "@/contexts/auth-context"
 
+function AvatarField({ control }: { control: Control<SignupFormValues> }) {
+  const authorName = useWatch({ control, name: "fullName" })
+  const { errors, isSubmitting } = useFormState({
+    control,
+    name: "avatar",
+  })
+
+  return (
+    <Field data-invalid={!!errors.avatar}>
+      <FieldLabel>Profile photo</FieldLabel>
+      <Controller
+        name="avatar"
+        control={control}
+        render={({ field }) => (
+          <AvatarUpload
+            value={field.value}
+            onChange={field.onChange}
+            authorName={authorName}
+            error={errors.avatar?.message}
+            disabled={isSubmitting}
+          />
+        )}
+      />
+    </Field>
+  )
+}
+
 export function SignupForm({
   className,
   ...props
 }: React.ComponentProps<"div">) {
-  const [authError, setAuthError] = useState<string | null>(null)
   const [confirmationEmail, setConfirmationEmail] = useState<string | null>(null)
   const { signUp } = useAuth()
   const navigate = useNavigate()
@@ -31,6 +63,8 @@ export function SignupForm({
     register,
     handleSubmit,
     control,
+    setError,
+    clearErrors,
     formState: { errors, isSubmitting },
   } = useForm<SignupFormValues>({
     resolver: zodResolver(signupSchema),
@@ -42,30 +76,37 @@ export function SignupForm({
     },
   })
 
-  const watchedFullName = useWatch({ control, name: "fullName" })
-
   const onSubmit = async (data: SignupFormValues) => {
-    setAuthError(null)
+    clearErrors("root.serverError")
 
-    const result = await signUp({
-      email: data.email,
-      password: data.password,
-      fullName: data.fullName,
-      avatarFile: data.avatar,
-    })
+    try {
+      const result = await signUp({
+        email: data.email,
+        password: data.password,
+        fullName: data.fullName,
+        avatarFile: data.avatar,
+      })
 
-    if (result.error) {
-      setAuthError(result.error)
-      return
+      if (result.error) {
+        setError("root.serverError", {
+          type: "server",
+          message: result.error,
+        })
+        return
+      }
+
+      if (result.needsEmailConfirmation) {
+        setConfirmationEmail(data.email)
+        return
+      }
+
+      navigate("/dashboard", { replace: true })
+    } catch {
+      setError("root.serverError", {
+        type: "network",
+        message: "Network error — please retry",
+      })
     }
-
-    if (result.needsEmailConfirmation) {
-      setConfirmationEmail(data.email)
-      return
-    }
-
-    // Auto-confirmed: redirect directly to dashboard
-    navigate("/dashboard", { replace: true })
   }
 
   return (
@@ -87,11 +128,14 @@ export function SignupForm({
         </p>
       </div>
 
-      {authError ? (
-        <div className="flex items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-xs text-destructive">
+      {errors.root?.serverError ? (
+        <div
+          role="alert"
+          className="flex items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-xs text-destructive"
+        >
           <AlertCircle className="size-4 shrink-0 mt-0.5" />
           <div className="flex-1">
-            <p className="font-medium">{authError}</p>
+            <p className="font-medium">{errors.root.serverError.message}</p>
           </div>
         </div>
       ) : null}
@@ -132,22 +176,7 @@ export function SignupForm({
       ) : (
         <form onSubmit={handleSubmit(onSubmit)} noValidate>
           <FieldGroup className="gap-5">
-            <Field data-invalid={!!errors.avatar}>
-              <FieldLabel>Profile photo</FieldLabel>
-              <Controller
-                name="avatar"
-                control={control}
-                render={({ field }) => (
-                  <AvatarUpload
-                    value={field.value}
-                    onChange={field.onChange}
-                    authorName={watchedFullName}
-                    error={errors.avatar?.message}
-                    disabled={isSubmitting}
-                  />
-                )}
-              />
-            </Field>
+            <AvatarField control={control} />
 
             <Field data-invalid={!!errors.fullName}>
               <FieldLabel htmlFor="fullName">Author name</FieldLabel>

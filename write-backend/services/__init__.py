@@ -15,6 +15,17 @@ from services.embeddings import (
     get_gemini_embedding_service,
     get_openai_embedding_service,
 )
+from services.llm import (
+    ChatProvider,
+    ChatService,
+    ChatServiceDep,
+    GeminiChatService,
+    GeminiChatServiceDep,
+    LLMError,
+    create_chat_service,
+    get_chat_service,
+    get_gemini_chat_service,
+)
 from services.supabase import (
     AsyncServiceSupabaseDep,
     AsyncSupabaseClient,
@@ -68,4 +79,13 @@ __all__ = [
     "get_openai_embedding_service",
     "embed_documents",
     "embed_query",
+    "LLMError",
+    "ChatProvider",
+    "ChatService",
+    "ChatServiceDep",
+    "GeminiChatService",
+    "GeminiChatServiceDep",
+    "create_chat_service",
+    "get_chat_service",
+    "get_gemini_chat_service",
 ]

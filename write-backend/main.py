@@ -9,6 +9,7 @@ Run locally:
 
 import asyncio
 import contextlib
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -49,11 +50,17 @@ async def build_worker_connector() -> Connector:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    # Serverless invocations are short-lived; an idle claim loop does not belong
+    # inside the request function. Run the worker only on long-lived hosts.
+    if os.environ.get("VERCEL"):
+        yield
+        return
+
     worker_id = make_worker_id()
     connector: Connector | None = None
     with wide_event_scope(operation="worker_start", worker_id=worker_id):
         try:
-            connector = await build_worker_connector()
+            connector = await asyncio.wait_for(build_worker_connector(), timeout=15)
         except Exception as exc:
             # API still serves; queued jobs wait until a worker can start.
             bind(

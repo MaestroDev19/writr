@@ -1,5 +1,9 @@
 /* eslint-disable react-refresh/only-export-components */
 import * as React from "react"
+import {
+  formatActiveModelDisplayName,
+  WRITR_HOSTED_MODEL,
+} from "@/lib/model-providers"
 import type { AppSettings, ModelProvider, WorkflowPromptConfig } from "@/types/settings"
 
 export type { AppSettings, ModelProvider, WorkflowPromptConfig }
@@ -30,7 +34,7 @@ const STORAGE_KEY = "writr_settings_v1"
 const DEFAULT_SETTINGS: AppSettings = {
   storageMode: "default",
   modelProvider: "gemini",
-  geminiModel: "gemini-2.5-pro",
+  geminiModel: WRITR_HOSTED_MODEL,
   generateConfig: DEFAULT_GENERATE_CONFIG,
   critiqueConfig: DEFAULT_CRITIQUE_CONFIG,
 }
@@ -104,18 +108,17 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     })
   }, [])
 
-  const activeModelDisplayName = React.useMemo(() => {
-    if (settings.modelProvider === "gemini") {
-      return `Gemini — ${settings.geminiModel || "gemini-2.5-pro"}`
-    }
-    if (settings.modelProvider === "groq") {
-      return "Groq — hosted"
-    }
-    if (settings.modelProvider === "openai") {
-      return "OpenAI — hosted"
-    }
-    return "OpenRouter — hosted"
-  }, [settings.modelProvider, settings.geminiModel])
+  // No frontend API key → Writr-hosted Gemini (backend GEMINI_API_KEY).
+  const activeModelDisplayName = React.useMemo(
+    () =>
+      formatActiveModelDisplayName({
+        llmSource: "default",
+        modelProvider: settings.modelProvider,
+        hostedModel: settings.geminiModel || WRITR_HOSTED_MODEL,
+        byokModel: "",
+      }),
+    [settings.modelProvider, settings.geminiModel]
+  )
 
   const value = React.useMemo(
     () => ({

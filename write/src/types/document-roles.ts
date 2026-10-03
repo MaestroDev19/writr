@@ -16,12 +16,16 @@ export interface TargetDocumentItem {
   status: 'ready' | 'loading' | 'error';
 }
 
+export type NoteSource = "file" | "text" | "link";
+
 export interface ReferenceDocumentItem {
   id: string;
   file?: File;
   name: string;
   size: string;
   role: 'reference';
+  /** How the note was added. File uploads omit this. */
+  source?: NoteSource;
   uploadedAt: Date;
   embeddingStatus: EmbeddingStatus;
   embeddingProgress: number; // 0 to 100

@@ -4,14 +4,18 @@ The loop claims an existing queued row. It does not enqueue. A second
 generation for the same owner is refused in the connector before insert.
 """
 
+from __future__ import annotations
+
 import asyncio
 import os
 import socket
 import uuid
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from services.connector import Connector
 from utils.log import note, scrub
+
+if TYPE_CHECKING:
+    from services.connector import Connector
 
 _IDLE_SECONDS = 2.0
 

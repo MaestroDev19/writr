@@ -2,54 +2,7 @@
 import * as React from "react"
 import { uploadFileApi } from "@/lib/api-client"
 import { formatFileSize } from "@/lib/format-file-size"
-import type { ReferenceDocumentItem } from "@/types/document-roles"
-
-const INITIAL_REFERENCE_DOCUMENTS: ReferenceDocumentItem[] = [
-  {
-    id: "ref-1",
-    name: "woolf_modern_fiction_1919.md",
-    size: "14.2 KB",
-    role: "reference",
-    uploadedAt: new Date(),
-    embeddingStatus: "ready",
-    embeddingProgress: 100,
-    chunks: 42,
-    isStale: false,
-  },
-  {
-    id: "ref-2",
-    name: "narrative_cadence_rubric.pdf",
-    size: "1.8 MB",
-    role: "reference",
-    uploadedAt: new Date(),
-    embeddingStatus: "ready",
-    embeddingProgress: 100,
-    chunks: 310,
-    isStale: false,
-  },
-  {
-    id: "ref-3",
-    name: "prose_style_corpus_ch1_ch5.docx",
-    size: "820 KB",
-    role: "reference",
-    uploadedAt: new Date(),
-    embeddingStatus: "ready",
-    embeddingProgress: 100,
-    chunks: 195,
-    isStale: false,
-  },
-  {
-    id: "ref-4",
-    name: "character_lexicon_and_motifs.txt",
-    size: "45.6 KB",
-    role: "reference",
-    uploadedAt: new Date(),
-    embeddingStatus: "ready",
-    embeddingProgress: 100,
-    chunks: 78,
-    isStale: false,
-  },
-]
+import type { NoteSource, ReferenceDocumentItem } from "@/types/document-roles"
 
 interface CorpusContextType {
   referenceDocuments: ReferenceDocumentItem[]
@@ -57,6 +10,7 @@ interface CorpusContextType {
   totalChunks: number
   totalFiles: number
   addReferenceFiles: (files: File[]) => void
+  addReferenceEntry: (entry: { name: string; size: string; source: Exclude<NoteSource, "file"> }) => void
   deleteReferenceDocument: (id: string) => void
   reindexAll: () => void
 }
@@ -64,9 +18,7 @@ interface CorpusContextType {
 const CorpusContext = React.createContext<CorpusContextType | undefined>(undefined)
 
 export function CorpusProvider({ children }: { children: React.ReactNode }) {
-  const [referenceDocuments, setReferenceDocuments] = React.useState<ReferenceDocumentItem[]>(
-    INITIAL_REFERENCE_DOCUMENTS
-  )
+  const [referenceDocuments, setReferenceDocuments] = React.useState<ReferenceDocumentItem[]>([])
 
   const isEmbedding = referenceDocuments.some(
     (d) => d.embeddingStatus === "embedding" || d.embeddingStatus === "queued"
@@ -130,6 +82,25 @@ export function CorpusProvider({ children }: { children: React.ReactNode }) {
     })
   }, [])
 
+  const addReferenceEntry = React.useCallback(
+    (entry: { name: string; size: string; source: Exclude<NoteSource, "file"> }) => {
+      const doc: ReferenceDocumentItem = {
+        id: `ref-${Date.now()}`,
+        name: entry.name,
+        size: entry.size,
+        role: "reference",
+        source: entry.source,
+        uploadedAt: new Date(),
+        embeddingStatus: "queued",
+        embeddingProgress: 0,
+        chunks: 0,
+        isStale: false,
+      }
+      setReferenceDocuments((prev) => [doc, ...prev])
+    },
+    []
+  )
+
   const deleteReferenceDocument = React.useCallback((id: string) => {
     setReferenceDocuments((prev) => prev.filter((d) => d.id !== id))
   }, [])
@@ -171,6 +142,7 @@ export function CorpusProvider({ children }: { children: React.ReactNode }) {
       totalChunks,
       totalFiles,
       addReferenceFiles,
+      addReferenceEntry,
       deleteReferenceDocument,
       reindexAll,
     }),
@@ -180,6 +152,7 @@ export function CorpusProvider({ children }: { children: React.ReactNode }) {
       totalChunks,
       totalFiles,
       addReferenceFiles,
+      addReferenceEntry,
       deleteReferenceDocument,
       reindexAll,
     ]

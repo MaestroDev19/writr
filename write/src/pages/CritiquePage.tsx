@@ -1,6 +1,14 @@
 import * as React from "react"
 import { Link } from "react-router-dom"
 import {
+  useForm,
+  useWatch,
+  type Control,
+  type UseFormSetValue,
+} from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { z } from "zod"
+import {
   MessageSquareQuote,
   CheckCircle2,
   FileText,
@@ -32,6 +40,13 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { cn } from "cn"
+
+const critiqueFormSchema = z.object({
+  manuscript: z.string().trim().min(1, "Paste text first"),
+  lensId: z.string().min(1),
+})
+
+type CritiqueFormValues = z.infer<typeof critiqueFormSchema>
 
 interface CritiqueLens {
   id: string
@@ -149,20 +164,97 @@ function ScoreMeter({
   )
 }
 
+function ManuscriptField({
+  control,
+  register,
+  setValue,
+  disabled,
+}: {
+  control: Control<CritiqueFormValues>
+  register: ReturnType<typeof useForm<CritiqueFormValues>>["register"]
+  setValue: UseFormSetValue<CritiqueFormValues>
+  disabled: boolean
+}) {
+  const manuscript = useWatch({ control, name: "manuscript" }) ?? ""
+  const wordCount = manuscript.trim()
+    ? manuscript.trim().split(/\s+/).filter(Boolean).length
+    : 0
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-2">
+          <label htmlFor="review-text" className="text-xs font-semibold text-foreground">
+            Your document
+          </label>
+          <Badge variant="outline" className="tabular-nums">
+            {wordCount} words
+          </Badge>
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[11px] text-muted-foreground">Try a sample:</span>
+          {SAMPLE_MANUSCRIPTS.map((s) => (
+            <Button
+              key={s.title}
+              type="button"
+              variant="outline"
+              size="xs"
+              disabled={disabled}
+              onClick={() =>
+                setValue("manuscript", s.text, {
+                  shouldDirty: true,
+                  shouldValidate: true,
+                })
+              }
+            >
+              {s.title}
+            </Button>
+          ))}
+        </div>
+      </div>
+
+      <textarea
+        id="review-text"
+        rows={6}
+        disabled={disabled}
+        placeholder="Paste a scene, screenplay, story bible, character notes, lore, or any story document…"
+        autoComplete="off"
+        className="w-full resize-y rounded-[var(--radius)] border border-border bg-background p-3.5 text-sm leading-relaxed outline-hidden transition-[border-color,box-shadow] focus:border-primary focus:ring-2 focus:ring-primary/30 disabled:opacity-60"
+        {...register("manuscript")}
+      />
+    </div>
+  )
+}
+
 export default function CritiquePage() {
   const { user } = useAuth()
   const { settings } = useSettings()
   const config = settings.critiqueConfig || DEFAULT_CRITIQUE_CONFIG
 
-  const [activeLensId, setActiveLensId] = React.useState("developmental-structure")
-  const [manuscriptInput, setManuscriptInput] = React.useState("")
-  const [isAnalyzing, setIsAnalyzing] = React.useState(false)
   const [copiedReport, setCopiedReport] = React.useState(false)
   const [report, setReport] = React.useState<CritiqueReport | null>(null)
   const reportRef = React.useRef<HTMLDivElement>(null)
 
+  const {
+    register,
+    handleSubmit,
+    control,
+    setValue,
+    reset,
+    setError,
+    clearErrors,
+    formState: { isSubmitting, errors },
+  } = useForm<CritiqueFormValues>({
+    resolver: zodResolver(critiqueFormSchema),
+    defaultValues: {
+      manuscript: "",
+      lensId: "developmental-structure",
+    },
+  })
+
+  const lensId = useWatch({ control, name: "lensId" }) ?? "developmental-structure"
   const activeLens =
-    CRITIQUE_LENSES.find((l) => l.id === activeLensId) || CRITIQUE_LENSES[0]
+    CRITIQUE_LENSES.find((l) => l.id === lensId) || CRITIQUE_LENSES[0]
 
   React.useEffect(() => {
     if (!copiedReport) return
@@ -175,17 +267,18 @@ export default function CritiquePage() {
     reportRef.current.scrollIntoView({ behavior: "smooth", block: "start" })
   }, [report])
 
-  const handleRunCritique = async () => {
-    if (!manuscriptInput.trim() || isAnalyzing) return
-    setIsAnalyzing(true)
+  const onSubmit = async (data: CritiqueFormValues) => {
+    clearErrors("root.serverError")
 
-    const lensInstruction = `Review focus: ${activeLens.name}. ${activeLens.description}`
+    const lens =
+      CRITIQUE_LENSES.find((l) => l.id === data.lensId) || CRITIQUE_LENSES[0]
+    const lensInstruction = `Review focus: ${lens.name}. ${lens.description}`
     const instruction = `${config.systemPrompt}\n\n${lensInstruction}`
 
     try {
       const apiResult = await reviewDocumentApi({
         instruction,
-        target_text: manuscriptInput.trim(),
+        target_text: data.manuscript.trim(),
         target_stored: false,
         temperature: config.temperature,
         max_tokens: config.maxTokens,
@@ -218,7 +311,7 @@ export default function CritiquePage() {
 
       // No live API result — fall back to a local report so UI work can continue.
       const generatedReport: CritiqueReport = {
-        scoreOverall: activeLensId === "cadence-rhythm" ? 82 : 88,
+        scoreOverall: data.lensId === "cadence-rhythm" ? 82 : 88,
         pacingScore: 84,
         voiceScore: 91,
         frictionScore: 76,
@@ -267,13 +360,14 @@ export default function CritiquePage() {
         operation: "critique_analyze",
         user_id: user?.id,
         request_id: failedRequestId,
-        manuscript_sha256: await sha256Hex(manuscriptInput),
+        manuscript_sha256: await sha256Hex(data.manuscript),
         error_type: err instanceof Error ? err.name : "CritiqueError",
         error_message: err instanceof Error ? err.message : "critique_failed",
       })
-      // Leave the previous report visible; toast for this path can come later.
-    } finally {
-      setIsAnalyzing(false)
+      setError("root.serverError", {
+        type: "server",
+        message: "Review failed — please retry",
+      })
     }
   }
 
@@ -289,10 +383,7 @@ export default function CritiquePage() {
     }
   }
 
-  const wordCount = manuscriptInput.trim()
-    ? manuscriptInput.trim().split(/\s+/).filter(Boolean).length
-    : 0
-  const canReview = Boolean(manuscriptInput.trim()) && !isAnalyzing
+  const canReview = !isSubmitting
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-8 px-4 py-8 sm:px-6 sm:py-10">
@@ -335,144 +426,127 @@ export default function CritiquePage() {
         </CardHeader>
 
         <CardContent className="flex flex-col gap-6 pt-5">
-          {/* Lens picker — segmented grid */}
-          <div className="flex flex-col gap-2" role="radiogroup" aria-label="Review focus">
-            <span className="text-xs font-semibold text-foreground">Focus</span>
-            <p className="text-[11px] text-muted-foreground">
-              Works for prose, scripts, story bibles, character sheets, and similar docs.
-            </p>
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-              {CRITIQUE_LENSES.map((lens) => {
-                const selected = activeLensId === lens.id
-                const Icon = lens.icon
-                return (
-                  <button
-                    key={lens.id}
-                    type="button"
-                    role="radio"
-                    aria-checked={selected}
-                    onClick={() => setActiveLensId(lens.id)}
-                    className={cn(
-                      "flex min-h-[4.5rem] flex-col items-start gap-1 rounded-[var(--radius)] border p-3 text-left transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
-                      selected
-                        ? "border-primary bg-primary/5 ring-1 ring-primary/30"
-                        : "border-border bg-muted/20 hover:border-primary/40 hover:bg-muted/40"
-                    )}
-                  >
-                    <span className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-                      <Icon
-                        className={cn(
-                          "size-3.5",
-                          selected ? "text-primary" : "text-muted-foreground"
-                        )}
-                        aria-hidden="true"
-                      />
-                      {lens.name}
-                    </span>
-                    <span className="text-[11px] leading-snug text-muted-foreground">
-                      {lens.description}
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* Manuscript input */}
-          <div className="flex flex-col gap-2">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-2">
-                <label htmlFor="review-text" className="text-xs font-semibold text-foreground">
-                  Your document
-                </label>
-                <Badge variant="outline" className="tabular-nums">
-                  {wordCount} words
-                </Badge>
-              </div>
-              <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-[11px] text-muted-foreground">Try a sample:</span>
-                {SAMPLE_MANUSCRIPTS.map((s) => (
-                  <Button
-                    key={s.title}
-                    type="button"
-                    variant="outline"
-                    size="xs"
-                    onClick={() => setManuscriptInput(s.text)}
-                  >
-                    {s.title}
-                  </Button>
-                ))}
+          <form
+            onSubmit={handleSubmit(onSubmit)}
+            className="flex flex-col gap-6"
+            noValidate
+          >
+            {/* Lens picker — segmented grid */}
+            <div className="flex flex-col gap-2" role="radiogroup" aria-label="Review focus">
+              <span className="text-xs font-semibold text-foreground">Focus</span>
+              <p className="text-[11px] text-muted-foreground">
+                Works for prose, scripts, story bibles, character sheets, and similar docs.
+              </p>
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                {CRITIQUE_LENSES.map((lens) => {
+                  const selected = lensId === lens.id
+                  const Icon = lens.icon
+                  return (
+                    <button
+                      key={lens.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      disabled={isSubmitting}
+                      onClick={() =>
+                        setValue("lensId", lens.id, { shouldDirty: true })
+                      }
+                      className={cn(
+                        "flex min-h-[4.5rem] flex-col items-start gap-1 rounded-[var(--radius)] border p-3 text-left transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
+                        selected
+                          ? "border-primary bg-primary/5 ring-1 ring-primary/30"
+                          : "border-border bg-muted/20 hover:border-primary/40 hover:bg-muted/40"
+                      )}
+                    >
+                      <span className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                        <Icon
+                          className={cn(
+                            "size-3.5",
+                            selected ? "text-primary" : "text-muted-foreground"
+                          )}
+                          aria-hidden="true"
+                        />
+                        {lens.name}
+                      </span>
+                      <span className="text-[11px] leading-snug text-muted-foreground">
+                        {lens.description}
+                      </span>
+                    </button>
+                  )
+                })}
               </div>
             </div>
 
-            <textarea
-              id="review-text"
-              name="review-text"
-              rows={6}
-              value={manuscriptInput}
-              onChange={(e) => setManuscriptInput(e.target.value)}
-              placeholder="Paste a scene, screenplay, story bible, character notes, lore, or any story document…"
-              autoComplete="off"
-              className="w-full resize-y rounded-[var(--radius)] border border-border bg-background p-3.5 text-sm leading-relaxed outline-hidden transition-[border-color,box-shadow] focus:border-primary focus:ring-2 focus:ring-primary/30"
-            />
-          </div>
-
-          {/* Actions */}
-          <div className="flex flex-col-reverse items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <Button
-              variant="outline"
-              size="sm"
-              render={<Link to="/dashboard#notes" />}
-              className="w-full sm:w-auto"
-            >
-              <BookOpen data-icon="inline-start" />
-              Add notes
-            </Button>
-
-            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
-              {!manuscriptInput.trim() ? (
-                <span className="inline-flex items-center justify-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 sm:justify-start">
-                  <AlertCircle className="size-3.5 shrink-0" aria-hidden="true" />
-                  Paste text first
+            {(errors.root?.serverError || errors.manuscript) && (
+              <div
+                role="alert"
+                className="flex items-start gap-2 text-xs font-medium text-amber-700 dark:text-amber-400"
+              >
+                <AlertCircle className="size-3.5 shrink-0 mt-0.5" aria-hidden="true" />
+                <span>
+                  {errors.root?.serverError?.message || errors.manuscript?.message}
                 </span>
-              ) : null}
+              </div>
+            )}
 
+            <ManuscriptField
+              control={control}
+              register={register}
+              setValue={setValue}
+              disabled={isSubmitting}
+            />
+
+            {/* Actions */}
+            <div className="flex flex-col-reverse items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
               <Button
-                type="button"
-                variant="ghost"
+                variant="outline"
                 size="sm"
-                onClick={() => {
-                  setManuscriptInput("")
-                  setReport(null)
-                }}
+                render={<Link to="/dashboard#notes" />}
                 className="w-full sm:w-auto"
               >
-                <RotateCcw data-icon="inline-start" />
-                Clear
+                <BookOpen data-icon="inline-start" />
+                Add notes
               </Button>
 
-              <Button
-                type="button"
-                onClick={handleRunCritique}
-                disabled={!canReview}
-                className="w-full sm:w-auto"
-              >
-                {isAnalyzing ? (
-                  <>
-                    <RefreshCw data-icon="inline-start" className="animate-spin" />
-                    Reviewing…
-                  </>
-                ) : (
-                  <>
-                    <MessageSquareQuote data-icon="inline-start" />
-                    Get {activeLens.name.toLowerCase()} feedback
-                  </>
-                )}
-              </Button>
+              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    reset({ manuscript: "", lensId })
+                    setReport(null)
+                    clearErrors()
+                  }}
+                  className="w-full sm:w-auto"
+                  disabled={isSubmitting}
+                >
+                  <RotateCcw data-icon="inline-start" />
+                  Clear
+                </Button>
+
+                <Button
+                  type="submit"
+                  disabled={!canReview}
+                  className="w-full sm:w-auto"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <RefreshCw data-icon="inline-start" className="animate-spin" />
+                      Reviewing…
+                    </>
+                  ) : (
+                    <>
+                      <MessageSquareQuote data-icon="inline-start" />
+                      Get {activeLens.name.toLowerCase()} feedback
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
-          </div>
+          </form>
 
-          {isAnalyzing ? (
+          {isSubmitting ? (
             <div
               role="status"
               aria-live="polite"
@@ -490,7 +564,7 @@ export default function CritiquePage() {
             </div>
           ) : null}
 
-          {report && !isAnalyzing ? (
+          {report && !isSubmitting ? (
             <div
               ref={reportRef}
               className="flex scroll-mt-24 flex-col gap-4 border-t border-border pt-5"

@@ -1,5 +1,4 @@
 import { z } from "zod"
-import { MODEL_PROVIDER_IDS } from "@/lib/model-providers"
 
 const workflowPromptConfigSchema = z.object({
   systemPrompt: z.string(),
@@ -11,10 +10,6 @@ const workflowPromptConfigSchema = z.object({
 })
 
 export const settingsFormSchema = z.object({
-  llmSource: z.enum(["default", "byok"]),
-  modelProvider: z.enum(MODEL_PROVIDER_IDS),
-  byokModel: z.string(),
-  apiKey: z.string(),
   generateConfig: workflowPromptConfigSchema,
   critiqueConfig: workflowPromptConfigSchema,
 })

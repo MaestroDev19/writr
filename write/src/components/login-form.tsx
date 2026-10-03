@@ -1,4 +1,3 @@
-import { useState } from "react"
 import { Link, useNavigate, useLocation } from "react-router-dom"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -21,7 +20,6 @@ export function LoginForm({
   className,
   ...props
 }: React.ComponentProps<"div">) {
-  const [authError, setAuthError] = useState<string | null>(null)
   const { signIn } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
@@ -33,6 +31,8 @@ export function LoginForm({
   const {
     register,
     handleSubmit,
+    setError,
+    clearErrors,
     formState: { errors, isSubmitting },
   } = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -43,15 +43,25 @@ export function LoginForm({
   })
 
   const onSubmit = async (data: LoginFormValues) => {
-    setAuthError(null)
-    const result = await signIn(data)
+    clearErrors("root.serverError")
+    try {
+      const result = await signIn(data)
 
-    if (result.error) {
-      setAuthError(result.error)
-      return
+      if (result.error) {
+        setError("root.serverError", {
+          type: "server",
+          message: result.error,
+        })
+        return
+      }
+
+      navigate(from, { replace: true })
+    } catch {
+      setError("root.serverError", {
+        type: "network",
+        message: "Network error — please retry",
+      })
     }
-
-    navigate(from, { replace: true })
   }
 
   return (
@@ -73,11 +83,14 @@ export function LoginForm({
         </p>
       </div>
 
-      {authError ? (
-        <div className="flex items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-xs text-destructive">
+      {errors.root?.serverError ? (
+        <div
+          role="alert"
+          className="flex items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-xs text-destructive"
+        >
           <AlertCircle className="size-4 shrink-0 mt-0.5" />
           <div className="flex-1">
-            <p className="font-medium">{authError}</p>
+            <p className="font-medium">{errors.root.serverError.message}</p>
           </div>
         </div>
       ) : null}

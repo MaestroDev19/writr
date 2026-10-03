@@ -52,10 +52,15 @@ class Settings(BaseSettings):
     supabase_service_role_key: str | None = None
 
     # --- LLM / embedding provider API keys ---
+    # GEMINI_API_KEY is the app default for both chat and embeddings when the
+    # frontend does not send a caller key (BYOK). Other provider keys are BYOK-only.
     gemini_api_key: str | None = None
     openai_api_key: str | None = None
     openrouter_api_key: str | None = None
     groq_api_key: str | None = None
+
+    # --- chat model defaults (Writr-hosted Gemini) ---
+    gemini_chat_model: str = "gemini-2.5-pro"
 
     # --- embedding model defaults ---
     gemini_embedding_model: str = "gemini-embedding-2"
@@ -81,6 +86,7 @@ class Settings(BaseSettings):
 
 
 
+@lru_cache(maxsize=1)
 def get_settings() -> Settings:
     """Return the shared Settings instance (parsed once, then cached)."""
     return Settings()

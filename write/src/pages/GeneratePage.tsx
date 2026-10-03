@@ -1,5 +1,8 @@
 import * as React from "react"
 import { Link } from "react-router-dom"
+import { useForm, useWatch, type Control, type UseFormSetValue } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { z } from "zod"
 import {
   Sparkles,
   ArrowRight,
@@ -52,6 +55,74 @@ const PROMPT_SUGGESTIONS = [
   "Match my notes and lore",
 ]
 
+const generateFormSchema = z.object({
+  prompt: z.string().trim().min(1, "Add instructions first"),
+})
+
+type GenerateFormValues = z.infer<typeof generateFormSchema>
+
+function PromptField({
+  control,
+  register,
+  setValue,
+  disabled,
+}: {
+  control: Control<GenerateFormValues>
+  register: ReturnType<typeof useForm<GenerateFormValues>>["register"]
+  setValue: UseFormSetValue<GenerateFormValues>
+  disabled: boolean
+}) {
+  const prompt = useWatch({ control, name: "prompt" }) ?? ""
+
+  return (
+    <>
+      <div className="flex flex-col gap-2">
+        <span className="text-xs font-semibold text-foreground">Quick picks</span>
+        <div className="flex flex-wrap gap-2">
+          {PROMPT_SUGGESTIONS.map((chip) => (
+            <button
+              key={chip}
+              type="button"
+              disabled={disabled}
+              onClick={() =>
+                setValue("prompt", chip, { shouldDirty: true, shouldValidate: true })
+              }
+              className={`min-h-10 rounded-[var(--radius)] border px-3 py-2 text-left text-xs transition-colors ${
+                prompt === chip
+                  ? "border-primary bg-primary/10 font-medium text-primary"
+                  : "border-border bg-muted/30 text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}
+            >
+              {chip}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <div className="flex items-center justify-between gap-2">
+          <label htmlFor="revision-prompt" className="text-xs font-semibold text-foreground">
+            Your instructions
+          </label>
+          <span className="text-[11px] text-muted-foreground tabular-nums">
+            {prompt.length}
+          </span>
+        </div>
+
+        <textarea
+          id="revision-prompt"
+          rows={3}
+          disabled={disabled}
+          placeholder="e.g. Build tension between Elena and Marcus…"
+          autoComplete="off"
+          className="w-full resize-y rounded-[var(--radius)] border border-border bg-background p-3 text-sm leading-relaxed outline-hidden transition-[border-color,box-shadow] focus:border-primary focus:ring-2 focus:ring-primary/30 disabled:opacity-60"
+          {...register("prompt")}
+        />
+      </div>
+    </>
+  )
+}
+
 export default function GeneratePage() {
   const { settings, activeModelDisplayName } = useSettings()
   const { referenceDocuments, totalFiles: totalRefFiles } = useCorpus()
@@ -67,18 +138,32 @@ export default function GeneratePage() {
   const [pendingUpload, setPendingUpload] = React.useState<PendingUpload | null>(null)
   const [isConfirmOpen, setIsConfirmOpen] = React.useState(false)
 
-  const [inputPrompt, setInputPrompt] = React.useState(PROMPT_SUGGESTIONS[0])
-  const [isGenerating, setIsGenerating] = React.useState(false)
   const [outputResult, setOutputResult] = React.useState<GenerateRevisionsResponse | null>(null)
   const [copied, setCopied] = React.useState(false)
+
+  const {
+    register,
+    handleSubmit,
+    control,
+    setValue,
+    reset,
+    setError,
+    clearErrors,
+    formState: { isSubmitting, errors },
+  } = useForm<GenerateFormValues>({
+    resolver: zodResolver(generateFormSchema),
+    defaultValues: {
+      prompt: PROMPT_SUGGESTIONS[0],
+    },
+  })
+
+  const canGenerate = Boolean(targetDraft) && !isSubmitting
 
   React.useEffect(() => {
     if (!copied) return
     const id = window.setTimeout(() => setCopied(false), 2000)
     return () => window.clearTimeout(id)
   }, [copied])
-
-  const canGenerate = Boolean(targetDraft) && Boolean(inputPrompt.trim()) && !isGenerating
 
   const handleTargetFilesSelected = (files: File[]) => {
     if (files.length === 0) return
@@ -126,16 +211,22 @@ export default function GeneratePage() {
     setTargetDraft(null)
   }
 
-  const handleGenerate = async () => {
-    if (!targetDraft || !inputPrompt.trim() || isGenerating) return
+  const onSubmit = async (data: GenerateFormValues) => {
+    if (!targetDraft) {
+      setError("root.serverError", {
+        type: "validation",
+        message: "Add a story file first",
+      })
+      return
+    }
 
-    setIsGenerating(true)
+    clearErrors("root.serverError")
 
     try {
       const response = await generateRevisionsApi(
         {
           target_file_id: targetDraft.id,
-          prompt: inputPrompt.trim(),
+          prompt: data.prompt.trim(),
           temperature: config.temperature,
           max_tokens: config.maxTokens,
         },
@@ -152,8 +243,11 @@ export default function GeneratePage() {
       )
 
       setOutputResult(response)
-    } finally {
-      setIsGenerating(false)
+    } catch {
+      setError("root.serverError", {
+        type: "server",
+        message: "Rewrite failed — please retry",
+      })
     }
   }
 
@@ -466,90 +560,73 @@ export default function GeneratePage() {
             <span className="text-muted-foreground">{activeModelDisplayName}</span>
           </div>
 
-          <div className="flex flex-col gap-2">
-            <span className="text-xs font-semibold text-foreground">Quick picks</span>
-            <div className="flex flex-wrap gap-2">
-              {PROMPT_SUGGESTIONS.map((chip) => (
-                <button
-                  key={chip}
-                  type="button"
-                  onClick={() => setInputPrompt(chip)}
-                  className={`min-h-10 rounded-[var(--radius)] border px-3 py-2 text-left text-xs transition-colors ${
-                    inputPrompt === chip
-                      ? "border-primary bg-primary/10 font-medium text-primary"
-                      : "border-border bg-muted/30 text-muted-foreground hover:bg-muted hover:text-foreground"
-                  }`}
-                >
-                  {chip}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <div className="flex items-center justify-between gap-2">
-              <label htmlFor="revision-prompt" className="text-xs font-semibold text-foreground">
-                Your instructions
-              </label>
-              <span className="text-[11px] text-muted-foreground tabular-nums">
-                {inputPrompt.length}
-              </span>
-            </div>
-
-            <textarea
-              id="revision-prompt"
-              name="revision-prompt"
-              rows={3}
-              value={inputPrompt}
-              onChange={(e) => setInputPrompt(e.target.value)}
-              placeholder="e.g. Build tension between Elena and Marcus…"
-              autoComplete="off"
-              className="w-full resize-y rounded-[var(--radius)] border border-border bg-background p-3 text-sm leading-relaxed outline-hidden transition-[border-color,box-shadow] focus:border-primary focus:ring-2 focus:ring-primary/30"
-            />
-          </div>
-
-          <div className="flex flex-col-reverse items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <Button
-              type="button"
-              onClick={() => setInputPrompt("")}
-              variant="ghost"
-              size="sm"
-              className="w-full sm:w-auto"
-            >
-              <RotateCcw data-icon="inline-start" />
-              Clear
-            </Button>
-
-            <div className="flex w-full flex-col items-stretch gap-2 sm:w-auto sm:flex-row sm:items-center">
-              {!targetDraft ? (
-                <span className="inline-flex items-center justify-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 sm:justify-start">
-                  <AlertCircle className="size-3.5 shrink-0" aria-hidden="true" />
-                  Add a story file first
+          <form
+            onSubmit={handleSubmit(onSubmit)}
+            className="flex flex-col gap-5"
+            noValidate
+          >
+            {(errors.root?.serverError || errors.prompt) && (
+              <div
+                role="alert"
+                className="flex items-start gap-2 text-xs font-medium text-amber-700 dark:text-amber-400"
+              >
+                <AlertCircle className="size-3.5 shrink-0 mt-0.5" aria-hidden="true" />
+                <span>
+                  {errors.root?.serverError?.message || errors.prompt?.message}
                 </span>
-              ) : null}
+              </div>
+            )}
 
+            <PromptField
+              control={control}
+              register={register}
+              setValue={setValue}
+              disabled={isSubmitting}
+            />
+
+            <div className="flex flex-col-reverse items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
               <Button
                 type="button"
-                onClick={handleGenerate}
-                disabled={!canGenerate}
+                onClick={() => reset({ prompt: "" })}
+                variant="ghost"
+                size="sm"
                 className="w-full sm:w-auto"
+                disabled={isSubmitting}
               >
-                {isGenerating ? (
-                  <>
-                    <RefreshCw data-icon="inline-start" className="animate-spin" />
-                    Rewriting…
-                  </>
-                ) : (
-                  <>
-                    <Wand2 data-icon="inline-start" />
-                    Rewrite story
-                  </>
-                )}
+                <RotateCcw data-icon="inline-start" />
+                Clear
               </Button>
-            </div>
-          </div>
 
-          {isGenerating ? (
+              <div className="flex w-full flex-col items-stretch gap-2 sm:w-auto sm:flex-row sm:items-center">
+                {!targetDraft ? (
+                  <span className="inline-flex items-center justify-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 sm:justify-start">
+                    <AlertCircle className="size-3.5 shrink-0" aria-hidden="true" />
+                    Add a story file first
+                  </span>
+                ) : null}
+
+                <Button
+                  type="submit"
+                  disabled={!canGenerate}
+                  className="w-full sm:w-auto"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <RefreshCw data-icon="inline-start" className="animate-spin" />
+                      Rewriting…
+                    </>
+                  ) : (
+                    <>
+                      <Wand2 data-icon="inline-start" />
+                      Rewrite story
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </form>
+
+          {isSubmitting ? (
             <div
               role="status"
               aria-live="polite"
@@ -568,7 +645,7 @@ export default function GeneratePage() {
             </div>
           ) : null}
 
-          {outputResult && !isGenerating ? (
+          {outputResult && !isSubmitting ? (
             <div className="flex flex-col gap-4 rounded-[var(--radius-xl)] border border-primary/30 bg-primary/5 p-4 sm:p-5">
               <div className="flex flex-col gap-3 border-b border-primary/15 pb-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex min-w-0 items-center gap-2.5">

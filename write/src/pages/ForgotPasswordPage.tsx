@@ -20,13 +20,14 @@ import { useAuth } from "@/contexts/auth-context"
 
 export default function ForgotPasswordPage() {
   const [submittedEmail, setSubmittedEmail] = useState<string | null>(null)
-  const [authError, setAuthError] = useState<string | null>(null)
   const { resetPassword } = useAuth()
 
   const {
     register,
     handleSubmit,
     reset,
+    setError,
+    clearErrors,
     formState: { errors, isSubmitting },
   } = useForm<ForgotPasswordFormValues>({
     resolver: zodResolver(forgotPasswordSchema),
@@ -36,19 +37,29 @@ export default function ForgotPasswordPage() {
   })
 
   const onSubmit = async (data: ForgotPasswordFormValues) => {
-    setAuthError(null)
-    const res = await resetPassword(data.email)
-    if (res.error) {
-      setAuthError(res.error)
-      return
+    clearErrors("root.serverError")
+    try {
+      const res = await resetPassword(data.email)
+      if (res.error) {
+        setError("root.serverError", {
+          type: "server",
+          message: res.error,
+        })
+        return
+      }
+      setSubmittedEmail(data.email)
+    } catch {
+      setError("root.serverError", {
+        type: "network",
+        message: "Network error — please retry",
+      })
     }
-    setSubmittedEmail(data.email)
   }
 
   const handleReset = () => {
     setSubmittedEmail(null)
-    setAuthError(null)
-    reset()
+    clearErrors("root.serverError")
+    reset({ email: "" })
   }
 
   return (
@@ -64,11 +75,14 @@ export default function ForgotPasswordPage() {
             </p>
           </div>
 
-          {authError ? (
-            <div className="flex items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-xs text-destructive">
+          {errors.root?.serverError ? (
+            <div
+              role="alert"
+              className="flex items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-xs text-destructive"
+            >
               <AlertCircle className="size-4 shrink-0 mt-0.5" />
               <div className="flex-1">
-                <p className="font-medium">{authError}</p>
+                <p className="font-medium">{errors.root.serverError.message}</p>
               </div>
             </div>
           ) : null}

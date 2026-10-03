@@ -4,8 +4,8 @@ Turns text into dense float vectors for storage in a vector index
 (e.g. Supabase pgvector) and similarity search.
 
 Providers:
-  - Gemini — caller's key, or the app default (``GEMINI_API_KEY``) when
-    ``use_app_default`` is set
+  - Gemini — caller's key when provided; otherwise the app default
+    (``GEMINI_API_KEY``). This is the Writr-hosted embedder.
   - OpenAI — caller's key only (no app default)
 
 The worker uses the process-wide Gemini app-default client.
@@ -162,8 +162,9 @@ class EmbeddingService:
 class GeminiEmbeddingService(EmbeddingService):
     """Gemini-backed EmbeddingService.
 
-    Pass the caller's ``api_key``, or set ``use_app_default=True`` to use
-    ``GEMINI_API_KEY`` from Settings. A caller key wins when both are present.
+    Pass the caller's ``api_key`` to override, otherwise use
+    ``GEMINI_API_KEY`` from Settings (Writr-hosted default). A caller key
+    always wins when present.
 
     Model and output dimensions come from Settings unless overridden.
     ``output_dimensionality`` must match the vector column size in the DB
@@ -176,7 +177,7 @@ class GeminiEmbeddingService(EmbeddingService):
         model: str | None = None,
         dimensions: int | None = None,
         *,
-        use_app_default: bool = False,
+        use_app_default: bool = True,
     ) -> None:
         settings = get_settings()
         user_key = _normalize_api_key(api_key)
@@ -208,7 +209,7 @@ class GeminiEmbeddingService(EmbeddingService):
             )
             raise EmbeddingError(
                 "A Gemini API key is required. Pass your own key, "
-                "or set use_app_default=True to use the app key."
+                "or leave use_app_default=True to use the app key."
             )
 
         target_model = model or settings.gemini_embedding_model
@@ -322,17 +323,18 @@ def get_openai_embedding_service(api_key: str) -> OpenAIEmbeddingService:
 
 
 def create_embedding_service(
-    provider: EmbeddingProvider,
+    provider: EmbeddingProvider = "gemini",
     api_key: str | None = None,
     *,
-    use_app_default: bool = False,
+    use_app_default: bool = True,
     model: str | None = None,
     dimensions: int | None = None,
 ) -> EmbeddingService:
     """Build an embedding client for one caller.
 
-    ``api_key`` is the caller's own key. A user key wins over the app default.
-    ``use_app_default`` reads ``GEMINI_API_KEY`` and is valid for Gemini only.
+    Default provider is Gemini. ``api_key`` is the caller's own key and wins
+    over the app default. With no caller key, Gemini uses ``GEMINI_API_KEY``.
+    ``use_app_default`` is valid for Gemini only.
     """
     if provider == "gemini":
         return GeminiEmbeddingService(
