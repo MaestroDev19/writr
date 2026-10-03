@@ -25,3 +25,7 @@ dependencies = [
 
 [tool.fastapi]
 entrypoint = "main:app"
+
+# Vercel looks for this (not tool.fastapi) when the app is not in a default path.
+[tool.vercel]
+entrypoint = "main:app"

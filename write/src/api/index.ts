@@ -3,12 +3,13 @@ import {
   uploadDocuments,
   uploadLink,
   uploadText,
+  getUploadStatus,
 } from "./endpoints/upload"
 
 /** Spread into `useQuery({ ...queryApiHelper(...) })`. */
 export function queryApiHelper<T>(
   queryKey: readonly unknown[],
-  queryFn: () => Promise<T>
+  queryFn: (...args: any[]) => Promise<T>
 ) {
   return { queryKey, queryFn }
 }
@@ -41,9 +42,7 @@ export const uploadLinkMutation = mutationApiHelper(
   (url: string) => uploadLink(url)
 )
 
-export {
-  uploadDocument,
-  uploadDocuments,
-  uploadLink,
-  uploadText,
-}
+export const getUploadStatusQuery = queryApiHelper(
+  ["upload", "status"],
+  (job_id: string) => getUploadStatus(job_id)
+)

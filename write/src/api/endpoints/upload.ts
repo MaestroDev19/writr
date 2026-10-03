@@ -39,3 +39,8 @@ export const uploadLink = async (url: string): Promise<EnqueuedUpload> => {
   const response = await api.post<EnqueuedUpload>("/upload/link", formBody({ url }))
   return response.data
 }
+
+export const getUploadStatus = async (job_id: string): Promise<EnqueuedUpload> => {
+  const response = await api.get<EnqueuedUpload>(`/upload/status/${job_id}`)
+  return response.data
+}

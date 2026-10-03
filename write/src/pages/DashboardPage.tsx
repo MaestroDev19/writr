@@ -7,7 +7,8 @@ import { cn } from "cn"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { uploadLink, uploadText } from "@/api"
+import { uploadLink, uploadText } from "@/api/endpoints/upload"
+import { getUploadStatusQuery, uploadLinkMutation } from "@/api"
 import { getApiErrorMessage } from "@/lib/axios"
 import { formatFileSize } from "@/lib/format-file-size"
 import {
@@ -95,10 +96,13 @@ export default function DashboardPage() {
   const [linkError, setLinkError] = React.useState<string | null>(null)
   const [saveMessage, setSaveMessage] = React.useState<string | null>(null)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
-
+  const [jobId, setJobId] = React.useState<string | null>(null)
   const textUpload = useMutation({ mutationFn: uploadText })
   const linkUpload = useMutation({ mutationFn: uploadLink })
-
+  const upload = useMutation({
+    ...uploadLinkMutation,
+    onSuccess: (data) => setJobId(data.job_id),
+  })
   const libraryState: LibraryState = isEmbedding
     ? "updating"
     : needsUpdate
