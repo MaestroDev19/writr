@@ -20,7 +20,7 @@ from slowapi.errors import RateLimitExceeded
 
 from core.config import get_settings
 from core.limiter import limiter
-from router import UploadRouter, active_generation_handler
+from router import DrainRouter, UploadRouter, active_generation_handler
 from services.chunking import get_chunker
 from services.connector import Connector, get_connector
 from services.doc_loader import get_doc_loader
@@ -105,6 +105,8 @@ app.add_middleware(
 app.add_middleware(WideEventMiddleware)
 
 app.include_router(UploadRouter)
+# Vercel Cron drain (no long-lived worker when VERCEL is set).
+app.include_router(DrainRouter)
 
 
 @app.get("/health")

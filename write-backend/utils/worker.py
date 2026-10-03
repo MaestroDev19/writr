@@ -31,15 +31,22 @@ def make_worker_id() -> str:
     return f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:8]}"
 
 
-async def run_worker(
+async def drain_jobs(
     connector: Connector,
     worker_id: str,
     *,
-    idle_seconds: float = _IDLE_SECONDS,
-) -> None:
-    """Claim and run one existing job at a time. Never creates a job."""
-    while True:
-        job: dict[str, Any] | None
+    max_jobs: int = 1,
+) -> list[dict[str, Any]]:
+    """Claim and run up to ``max_jobs`` existing rows. Never creates a job.
+
+    Used by the Vercel Cron drain endpoint (one short invoke) and by the
+    long-lived local loop below.
+    """
+    if max_jobs < 1:
+        return []
+
+    processed: list[dict[str, Any]] = []
+    for _ in range(max_jobs):
         try:
             job = await connector.run_next_job(worker_id)
         except Exception as exc:
@@ -51,6 +58,21 @@ async def run_worker(
                 error_message=scrub(str(exc)),
                 outcome="error",
             )
-            job = None
+            break
         if job is None:
+            break
+        processed.append(job)
+    return processed
+
+
+async def run_worker(
+    connector: Connector,
+    worker_id: str,
+    *,
+    idle_seconds: float = _IDLE_SECONDS,
+) -> None:
+    """Claim and run one existing job at a time. Never creates a job."""
+    while True:
+        processed = await drain_jobs(connector, worker_id, max_jobs=1)
+        if not processed:
             await asyncio.sleep(idle_seconds)

@@ -38,6 +38,8 @@ class Settings(BaseSettings):
     commit_sha: str | None = None
     region: str | None = None
     deployment_id: str | None = None
+    # Shared secret for Vercel Cron → GET /internal/drain-jobs (Bearer token).
+    cron_secret: str | None = None
 
     # --- Supabase ---
     # Project URL, e.g. https://xxxx.supabase.co

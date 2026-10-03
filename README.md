@@ -84,7 +84,7 @@ bun run format       # Prettier
 
 ### Backend surface
 
-Protected routes expect a Supabase JWT. Check Swagger at `/docs` for the live API. Today that includes `GET /`, `GET /health`, and `POST /v1/text` (queued text ingest). The web client also calls `/cloud/*` for note upload and Write/Review — keep client and routes in sync as those land.
+Protected routes expect a Supabase JWT. Check Swagger at `/docs` for the live API. Upload ingest is `POST /upload/{text,document,documents,link}` (202 + queued job). On long-lived hosts a worker claims jobs in-process; on Vercel that loop is off and `GET /internal/drain-jobs` is hit by Cron instead.
 
 ### Desktop
 
@@ -123,6 +123,9 @@ SUPABASE_URL=https://<project-ref>.supabase.co
 SUPABASE_PUBLISHABLE_KEY=your-publishable-key
 SUPABASE_SECRET_KEY=your-secret-key
 
+# Required on Vercel so Cron can drain background_jobs
+CRON_SECRET=generate-a-long-random-string
+
 GEMINI_API_KEY=
 OPENAI_API_KEY=
 OPENROUTER_API_KEY=
@@ -130,6 +133,8 @@ GROQ_API_KEY=
 ```
 
 Legacy `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` still work. Provider keys are optional at startup; a call fails only when its key is missing. Gemini embeddings are preferred when `GEMINI_API_KEY` is set; OpenAI is the fallback. Keep `EMBEDDING_DIM` (default `768`) aligned with the `pgvector` column.
+
+Set the same `CRON_SECRET` in the Vercel project env. Cron sends `Authorization: Bearer <CRON_SECRET>` to `GET /internal/drain-jobs` every minute (`write-backend/vercel.json`). Hobby plans may only allow daily crons — use Pro (or a local `uvicorn` worker) if jobs must drain quickly. If Deployment Protection is on, allow Cron through or add a protection bypass for that path.
 
 > [!IMPORTANT]
 > CORS currently allows every origin. Narrow `allow_origins` in `write-backend/main.py` before production.
