@@ -34,6 +34,19 @@ _HEARTBEAT_INTERVAL_SECONDS = 30
 # job_type is constrained in DB; payload.source_type chooses the handler.
 _INGEST_JOB_TYPE = "embed_document"
 _RATE_LIMIT_WAIT_SECONDS = 60.0
+# Hard caps for the notes library (enforced at enqueue; table is source of truth).
+MAX_REFERENCE_DOCUMENTS_PER_USER = 5
+MAX_DOCUMENTS_PER_UPLOAD = 3
+
+
+class DocumentLimitError(Exception):
+    """Owner would exceed the notes-library capacity. Nothing was inserted."""
+
+    def __init__(self, message: str, *, current: int, incoming: int, limit: int) -> None:
+        self.current = current
+        self.incoming = incoming
+        self.limit = limit
+        super().__init__(message)
 
 
 @asynccontextmanager
@@ -107,6 +120,23 @@ class Connector:
     async def get_job(self, job_id: str, owner_id: str) -> dict | None:
         return await self.queue.get_job(job_id, owner_id)
 
+    async def find_active_job(self, owner_id: str) -> dict | None:
+        """In-flight embed job for this owner, if any."""
+        return await self.queue.find_active_job(owner_id)
+
+    async def list_reference_documents(self, owner_id: str) -> list[dict]:
+        return await self.writr_vector_store.list_reference_documents(owner_id=owner_id)
+
+    async def count_reference_documents(self, owner_id: str) -> int:
+        return await self.writr_vector_store.count_reference_documents(owner_id=owner_id)
+
+    async def delete_reference_document(self, document_id: str, owner_id: str) -> bool:
+        return await self.writr_vector_store.delete_reference_document(
+            document_id=document_id,
+            owner_id=owner_id,
+            raise_on_error=True,
+        )
+
     async def _require_idle_owner(self, owner_id: str) -> None:
         """Stop before enqueue when this owner already has a queued or running job."""
         active = await self.queue.find_active_job(owner_id)
@@ -120,8 +150,38 @@ class Connector:
         )
         raise ActiveGenerationError(active)
 
+    async def _require_document_capacity(
+        self, owner_id: str, *, incoming: int
+    ) -> None:
+        """Refuse enqueue when ``reference_documents`` would exceed the per-user cap."""
+        if incoming < 1:
+            raise ValueError("incoming document count must be at least 1")
+        current = await self.count_reference_documents(owner_id)
+        limit = MAX_REFERENCE_DOCUMENTS_PER_USER
+        if current + incoming > limit:
+            remaining = max(0, limit - current)
+            bind(
+                user_id=owner_id,
+                document_count=current,
+                incoming_count=incoming,
+                document_limit=limit,
+                queue_result="capacity",
+            )
+            raise DocumentLimitError(
+                (
+                    f"Notes library is full ({current}/{limit}). "
+                    f"You can add {remaining} more."
+                    if remaining
+                    else f"Notes library is full ({current}/{limit}). Remove a note to add another."
+                ),
+                current=current,
+                incoming=incoming,
+                limit=limit,
+            )
+
     async def enqueue_text(self, text: str, owner_id: str) -> dict:
         await self._require_idle_owner(owner_id)
+        await self._require_document_capacity(owner_id, incoming=1)
         return await self.queue.enqueue(
             job_type=_INGEST_JOB_TYPE,
             payload={"text": text, "source_type": "text"},
@@ -130,6 +190,7 @@ class Connector:
 
     async def enqueue_document(self, document: Any, owner_id: str) -> dict:
         await self._require_idle_owner(owner_id)
+        await self._require_document_capacity(owner_id, incoming=1)
         return await self.queue.enqueue(
             job_type=_INGEST_JOB_TYPE,
             payload={"document": document, "source_type": "document"},
@@ -142,8 +203,13 @@ class Connector:
         """Queue one job for the whole batch. One owner, one in-flight generation."""
         if not documents:
             raise ValueError("documents list is empty")
+        if len(documents) > MAX_DOCUMENTS_PER_UPLOAD:
+            raise ValueError(
+                f"You can upload at most {MAX_DOCUMENTS_PER_UPLOAD} files at a time."
+            )
 
         await self._require_idle_owner(owner_id)
+        await self._require_document_capacity(owner_id, incoming=len(documents))
         bind(user_id=owner_id, document_count=len(documents))
         return await self.queue.enqueue(
             job_type=_INGEST_JOB_TYPE,
@@ -153,6 +219,7 @@ class Connector:
 
     async def enqueue_document_from_url(self, url: str, owner_id: str) -> dict:
         await self._require_idle_owner(owner_id)
+        await self._require_document_capacity(owner_id, incoming=1)
         return await self.queue.enqueue(
             job_type=_INGEST_JOB_TYPE,
             payload={"url": url, "source_type": "document_from_url"},

@@ -13,10 +13,16 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from core.limiter import limiter
-from services.connector import ConnectorDep
+from services.connector import (
+    MAX_DOCUMENTS_PER_UPLOAD,
+    MAX_REFERENCE_DOCUMENTS_PER_USER,
+    ConnectorDep,
+    DocumentLimitError,
+)
 from services.doc_loader import SUPPORTED_EXTENSIONS
 from services.queue import ActiveGenerationError
 from services.supabase import CurrentUserIdDep
+from services.vetctor_store import VectorStoreError
 from utils.log import bind, scrub
 
 
@@ -25,10 +31,31 @@ class EnqueuedJob(BaseModel):
     status: str
 
 
+class ActiveUploadOut(BaseModel):
+    """Present when a job is in flight; both fields null when the owner is idle."""
+
+    job_id: str | None = None
+    status: str | None = None
+
+
 class ActiveGenerationConflict(BaseModel):
     message: str
     job_id: str
     status: str
+
+
+class ReferenceDocumentOut(BaseModel):
+    id: str
+    name: str
+    chunk_count: int
+    embedding_status: str
+    created_at: str
+
+
+class ReferenceLibraryOut(BaseModel):
+    documents: list[ReferenceDocumentOut]
+    count: int
+    limit: int
 
 
 def _conflict_body(exc: ActiveGenerationError) -> ActiveGenerationConflict:
@@ -159,6 +186,11 @@ async def upload_text(
         job = await connector.enqueue_text(text, user_id)
     except ActiveGenerationError:
         raise
+    except DocumentLimitError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
     except Exception as exc:
         bind(
             user_id=user_id,
@@ -210,6 +242,11 @@ async def upload_document(
         job = await connector.enqueue_document(document, user_id)
     except ActiveGenerationError:
         raise
+    except DocumentLimitError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
     except Exception as exc:
         bind(
             user_id=user_id,
@@ -256,6 +293,13 @@ async def upload_documents(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="At least one file is required.",
         )
+    if len(files) > MAX_DOCUMENTS_PER_UPLOAD:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"You can upload at most {MAX_DOCUMENTS_PER_UPLOAD} files at a time."
+            ),
+        )
 
     documents: list[dict[str, str]] = []
     total_bytes = 0
@@ -280,6 +324,11 @@ async def upload_documents(
         job = await connector.enqueue_documents(documents, user_id)
     except ActiveGenerationError:
         raise
+    except DocumentLimitError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -339,6 +388,11 @@ async def upload_link(
         job = await connector.enqueue_document_from_url(normalized, user_id)
     except ActiveGenerationError:
         raise
+    except DocumentLimitError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
     except Exception as exc:
         bind(
             user_id=user_id,
@@ -371,3 +425,74 @@ async def get_upload_status(
             detail="Job not found.",
         )
     return _enqueued(job)
+
+
+@UploadRouter.get("/active", response_model=ActiveUploadOut)
+async def get_active_upload(
+    request: Request,
+    user_id: CurrentUserIdDep,
+    connector: ConnectorDep,
+) -> ActiveUploadOut:
+    """Return this owner's in-flight upload job, if any (for form lock / refresh)."""
+    job = await connector.find_active_job(user_id)
+    if not job:
+        return ActiveUploadOut()
+    enqueued = _enqueued(job)
+    return ActiveUploadOut(job_id=enqueued.job_id, status=enqueued.status)
+
+
+def _library_row(row: dict) -> ReferenceDocumentOut:
+    return ReferenceDocumentOut(
+        id=str(row.get("id") or ""),
+        name=str(row.get("name") or "Untitled note"),
+        chunk_count=int(row.get("chunk_count") or 0),
+        embedding_status=str(row.get("embedding_status") or "pending"),
+        created_at=str(row.get("created_at") or ""),
+    )
+
+
+@UploadRouter.get("/library", response_model=ReferenceLibraryOut)
+async def list_library(
+    request: Request,
+    user_id: CurrentUserIdDep,
+    connector: ConnectorDep,
+) -> ReferenceLibraryOut:
+    """List persisted notes from ``reference_documents`` for the current user."""
+    try:
+        rows = await connector.list_reference_documents(user_id)
+    except VectorStoreError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(exc),
+        ) from exc
+    documents = [_library_row(row) for row in rows]
+    return ReferenceLibraryOut(
+        documents=documents,
+        count=len(documents),
+        limit=MAX_REFERENCE_DOCUMENTS_PER_USER,
+    )
+
+
+@UploadRouter.delete(
+    "/library/{document_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_library_document(
+    request: Request,
+    user_id: CurrentUserIdDep,
+    connector: ConnectorDep,
+    document_id: str,
+) -> None:
+    """Delete one note owned by the current user (chunks cascade)."""
+    try:
+        deleted = await connector.delete_reference_document(document_id, user_id)
+    except VectorStoreError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(exc),
+        ) from exc
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Note not found.",
+        )

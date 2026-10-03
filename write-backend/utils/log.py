@@ -48,8 +48,9 @@ def environment_fields() -> dict[str, Any]:
 
     ``instance_id`` and ``process_id`` come from the running process.
     Commit, version, region, and deployment id are included only when an
-    environment variable sets them. ``environment`` falls back to Settings,
-    which already defaults to ``development``.
+    environment variable sets them. ``environment`` prefers ``ENVIRONMENT``
+    / ``ENV``, then ``VERCEL_ENV`` (production, preview, or development on
+    Vercel), then Settings, which defaults to ``development`` for local runs.
     """
     fields: dict[str, Any] = {
         "instance_id": os.environ.get("INSTANCE_ID")
@@ -77,7 +78,11 @@ def environment_fields() -> dict[str, Any]:
     )
     if region:
         fields["region"] = region
-    environment = os.environ.get("ENVIRONMENT") or os.environ.get("ENV")
+    environment = (
+        os.environ.get("ENVIRONMENT")
+        or os.environ.get("ENV")
+        or os.environ.get("VERCEL_ENV")
+    )
     deployment_id = os.environ.get("DEPLOYMENT_ID") or os.environ.get("K_REVISION")
     service = os.environ.get("SERVICE_NAME")
     try:

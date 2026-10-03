@@ -190,6 +190,73 @@ class WritrVectorStore:
                 raise VectorStoreError(_STATUS_FAILED)
             return
 
+    async def count_reference_documents(self, *, owner_id: str) -> int:
+        """How many notes this owner already has in ``reference_documents``."""
+        if not owner_id or not str(owner_id).strip():
+            raise VectorStoreError("Owner is required.")
+
+        bind(user_id=owner_id)
+        try:
+            res = await (
+                self.supabase_client.table(self.document_table_name)
+                .select("id", count="exact")
+                .eq("owner_id", owner_id)
+                .execute()
+            )
+        except APIError as e:
+            bind(
+                user_id=owner_id,
+                db_code=e.code,
+                error_type=type(e).__name__,
+                error_message=scrub(str(e)),
+            )
+            raise VectorStoreError("Could not count reference documents.") from e
+        except Exception as e:
+            bind(
+                user_id=owner_id,
+                error_type=type(e).__name__,
+                error_message=scrub(str(e)),
+            )
+            raise VectorStoreError("Could not count reference documents.") from e
+
+        if res.count is not None:
+            return int(res.count)
+        return len(res.data or [])
+
+    async def list_reference_documents(self, *, owner_id: str) -> list[dict[str, Any]]:
+        """List this owner's notes newest-first (no chunk bodies)."""
+        if not owner_id or not str(owner_id).strip():
+            raise VectorStoreError("Owner is required.")
+
+        bind(user_id=owner_id)
+        try:
+            res = await (
+                self.supabase_client.table(self.document_table_name)
+                .select("id, name, chunk_count, embedding_status, created_at")
+                .eq("owner_id", owner_id)
+                .order("created_at", desc=True)
+                .execute()
+            )
+        except APIError as e:
+            bind(
+                user_id=owner_id,
+                db_code=e.code,
+                error_type=type(e).__name__,
+                error_message=scrub(str(e)),
+            )
+            raise VectorStoreError("Could not list reference documents.") from e
+        except Exception as e:
+            bind(
+                user_id=owner_id,
+                error_type=type(e).__name__,
+                error_message=scrub(str(e)),
+            )
+            raise VectorStoreError("Could not list reference documents.") from e
+
+        rows = res.data or []
+        bind(user_id=owner_id, document_count=len(rows))
+        return list(rows)
+
     async def delete_reference_document(
         self,
         *,

@@ -1,15 +1,23 @@
 import * as React from "react"
 import { Link, useNavigate } from "react-router-dom"
-import { useMutation, useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useAuth } from "@/contexts/auth-context"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { cn } from "cn"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { uploadLinkMutation, uploadStatusQuery, uploadTextMutation } from "@/api"
-import { getApiErrorMessage } from "@/lib/axios"
-import { formatFileSize } from "@/lib/format-file-size"
+import {
+  MAX_DOCUMENTS_PER_UPLOAD,
+  activeUploadQuery,
+  libraryQuery,
+  uploadDocumentMutation,
+  uploadDocumentsMutation,
+  uploadLinkMutation,
+  uploadStatusQuery,
+  uploadTextMutation,
+} from "@/api"
+import { getApiErrorMessage, isAxiosError } from "@/lib/axios"
 import {
   Sparkles,
   MessageSquareQuote,
@@ -77,18 +85,31 @@ function parseHttpUrl(value: string): string | null {
   }
 }
 
+function adoptBusyJob(error: unknown, setJobId: (id: string) => void): boolean {
+  if (!isAxiosError(error) || error.response?.status !== 409) return false
+  const data = error.response.data as { job_id?: string } | undefined
+  if (!data?.job_id) return false
+  setJobId(data.job_id)
+  return true
+}
+
 export default function DashboardPage() {
   const { user, profile } = useAuth()
   const { activeModelDisplayName } = useSettings()
+  const queryClient = useQueryClient()
   const {
     referenceDocuments,
     totalFiles,
     totalChunks,
-    addReferenceFiles,
-    addReferenceEntry,
+    libraryLimit,
+    remainingSlots,
     deleteReferenceDocument,
-    reindexAll,
+    refreshLibrary,
     isEmbedding,
+    isLoading,
+    isDeleting,
+    activeJobId,
+    activeJobStatus,
   } = useCorpus()
   const navigate = useNavigate()
 
@@ -98,25 +119,47 @@ export default function DashboardPage() {
   const [lastUpdated, setLastUpdated] = React.useState("Today")
   const [pendingUpload, setPendingUpload] = React.useState<PendingUpload | null>(null)
   const [isConfirmOpen, setIsConfirmOpen] = React.useState(false)
-  const [needsUpdate, setNeedsUpdate] = React.useState(false)
   const [isDragging, setIsDragging] = React.useState(false)
   const [noteInput, setNoteInput] = React.useState<NoteInput>("files")
   const [noteText, setNoteText] = React.useState("")
   const [noteLink, setNoteLink] = React.useState("")
   const [textError, setTextError] = React.useState<string | null>(null)
   const [linkError, setLinkError] = React.useState<string | null>(null)
+  const [filesError, setFilesError] = React.useState<string | null>(null)
   const [saveMessage, setSaveMessage] = React.useState<string | null>(null)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const [jobId, setJobId] = React.useState<string | null>(null)
+
+  React.useEffect(() => {
+    if (activeJobId) setJobId(activeJobId)
+  }, [activeJobId])
+
+  const onUploadQueued = React.useCallback(
+    async (data: { job_id: string }) => {
+      setJobId(data.job_id)
+      await queryClient.invalidateQueries({ queryKey: activeUploadQuery.queryKey })
+    },
+    [queryClient]
+  )
+
   const textUpload = useMutation({
     ...uploadTextMutation,
-    onSuccess: (data) => setJobId(data.job_id),
+    onSuccess: onUploadQueued,
   })
   const linkUpload = useMutation({
     ...uploadLinkMutation,
-    onSuccess: (data) => setJobId(data.job_id),
+    onSuccess: onUploadQueued,
   })
-  const { data: job } = useQuery({
+  const documentUpload = useMutation({
+    ...uploadDocumentMutation,
+    onSuccess: onUploadQueued,
+  })
+  const documentsUpload = useMutation({
+    ...uploadDocumentsMutation,
+    onSuccess: onUploadQueued,
+  })
+
+  const { data: job, isError: jobStatusError } = useQuery({
     ...uploadStatusQuery(jobId ?? ""),
     enabled: Boolean(jobId),
     refetchInterval: (query) => {
@@ -126,27 +169,62 @@ export default function DashboardPage() {
       return false
     },
   })
-  const libraryState: LibraryState = isEmbedding
-    ? "updating"
-    : needsUpdate
-      ? "needs-update"
-      : "ready"
-  const jobBanner = jobId
-    ? (jobStatusBanner(job?.status) ?? {
-        tone: "updating" as const,
-        label: "queued / waiting",
-      })
-    : null
+
+  const jobStatus = job?.status ?? activeJobStatus ?? undefined
+  const jobInFlight =
+    !jobStatusError &&
+    (jobStatus === "queued" ||
+      jobStatus === "running" ||
+      textUpload.isPending ||
+      linkUpload.isPending ||
+      documentUpload.isPending ||
+      documentsUpload.isPending)
+
+  const formLocked = jobInFlight
+
+  React.useEffect(() => {
+    if (!jobId) return
+
+    if (jobStatusError) {
+      void queryClient.invalidateQueries({ queryKey: activeUploadQuery.queryKey })
+      setJobId(null)
+      return
+    }
+
+    if (!job?.status) return
+    if (job.status === "queued" || job.status === "running") return
+
+    void queryClient.invalidateQueries({ queryKey: libraryQuery.queryKey })
+    void queryClient.invalidateQueries({ queryKey: activeUploadQuery.queryKey })
+
+    if (job.status === "succeeded") {
+      setSaveMessage("Notes ready.")
+      const now = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      setLastUpdated(`Today, ${now}`)
+    } else if (job.status === "dead" || job.status === "failed") {
+      setSaveMessage("This note could not be prepared.")
+    }
+
+    // Unlock once the job is terminal or gone.
+    setJobId(null)
+  }, [job?.status, jobId, jobStatusError, queryClient])
+
+  const libraryState: LibraryState = isEmbedding || jobInFlight ? "updating" : "ready"
+  const jobBanner =
+    jobStatusError && jobId
+      ? { tone: "error" as const, label: "error" }
+      : jobId || jobInFlight
+        ? (jobStatusBanner(jobStatus) ?? {
+            tone: "updating" as const,
+            label: "queued / waiting",
+          })
+        : null
   const bannerTone: BannerTone =
     jobBanner?.tone ??
-    (libraryState === "updating"
-      ? "updating"
-      : libraryState === "needs-update"
-        ? "needs-update"
-        : "ready")
+    (libraryState === "updating" ? "updating" : "ready")
 
   const updateProgress = React.useMemo(() => {
-    if (!isEmbedding) return 100
+    if (!jobInFlight && !isEmbedding) return 100
     if (referenceDocuments.length === 0) return 45
     const sum = referenceDocuments.reduce((acc, doc) => {
       if (doc.embeddingStatus === "ready") return acc + 100
@@ -154,100 +232,163 @@ export default function DashboardPage() {
       return acc
     }, 0)
     return Math.min(99, Math.max(15, Math.round(sum / referenceDocuments.length)))
-  }, [isEmbedding, referenceDocuments])
+  }, [isEmbedding, jobInFlight, referenceDocuments])
 
   const bannerLabel =
     jobBanner?.label ??
     (libraryState === "updating"
       ? `Preparing notes (${updateProgress}%)`
-      : libraryState === "needs-update"
-        ? "Notes need a refresh"
-        : "Notes ready")
-  const jobInFlight = jobBanner?.tone === "updating"
+      : "Notes ready")
 
-  const handleRefresh = React.useCallback(() => {
-    setNeedsUpdate(false)
-    reindexAll()
+  const handleRefresh = React.useCallback(async () => {
+    await refreshLibrary()
     const now = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
     setLastUpdated(`Today, ${now}`)
-  }, [reindexAll])
+  }, [refreshLibrary])
 
-  const handleFilesSelected = React.useCallback((selectedFiles: File[]) => {
-    if (selectedFiles.length === 0) return
-    setPendingUpload({
-      files: selectedFiles,
-      designatedRole: "reference",
-      mode: "dashboard-reference",
-    })
-    setIsConfirmOpen(true)
-  }, [])
+  const handleFilesSelected = React.useCallback(
+    (selectedFiles: File[]) => {
+      if (selectedFiles.length === 0 || formLocked) return
+      setFilesError(null)
+      setSaveMessage(null)
+
+      if (remainingSlots <= 0) {
+        setFilesError(
+          `Notes library is full (${libraryLimit}/${libraryLimit}). Remove a note to add another.`
+        )
+        return
+      }
+
+      let files = selectedFiles
+      if (files.length > MAX_DOCUMENTS_PER_UPLOAD) {
+        files = files.slice(0, MAX_DOCUMENTS_PER_UPLOAD)
+        setFilesError(
+          `Only ${MAX_DOCUMENTS_PER_UPLOAD} files can be uploaded at a time. Extra files were left out.`
+        )
+      }
+      if (files.length > remainingSlots) {
+        files = files.slice(0, remainingSlots)
+        setFilesError(
+          `You can add ${remainingSlots} more note${remainingSlots === 1 ? "" : "s"} (${totalFiles}/${libraryLimit}). Extra files were left out.`
+        )
+      }
+
+      setPendingUpload({
+        files,
+        designatedRole: "reference",
+        mode: "dashboard-reference",
+      })
+      setIsConfirmOpen(true)
+    },
+    [formLocked, libraryLimit, remainingSlots, totalFiles]
+  )
+
+  const handleConfirmFiles = React.useCallback(
+    async (files: File[]) => {
+      if (files.length === 0 || formLocked) return
+      setFilesError(null)
+      setSaveMessage(null)
+      try {
+        if (files.length === 1) {
+          await documentUpload.mutateAsync(files[0])
+        } else {
+          await documentsUpload.mutateAsync(files)
+        }
+        setSaveMessage(
+          files.length === 1
+            ? "File queued. Writr is preparing it."
+            : `${files.length} files queued. Writr is preparing them.`
+        )
+      } catch (error) {
+        if (adoptBusyJob(error, setJobId)) {
+          setFilesError("A note is already being prepared. Wait for it to finish.")
+          return
+        }
+        setFilesError(getApiErrorMessage(error, "Could not upload these files."))
+      }
+    },
+    [documentUpload, documentsUpload, formLocked]
+  )
 
   const handleAddText = React.useCallback(
     async (event: React.FormEvent<HTMLFormElement>) => {
       event.preventDefault()
+      if (formLocked) return
       const text = noteText.trim()
       if (!text) {
         setTextError("Paste some text first.")
+        return
+      }
+      if (remainingSlots <= 0) {
+        setTextError(
+          `Notes library is full (${libraryLimit}/${libraryLimit}). Remove a note to add another.`
+        )
         return
       }
       setTextError(null)
       setSaveMessage(null)
       try {
         await textUpload.mutateAsync(text)
-        addReferenceEntry({
-          name: noteTitle(text),
-          size: formatFileSize(new TextEncoder().encode(text).length),
-          source: "text",
-        })
         setNoteText("")
-        setSaveMessage("Note saved. Writr is preparing it.")
+        setSaveMessage(`“${noteTitle(text)}” queued. Writr is preparing it.`)
       } catch (error) {
+        if (adoptBusyJob(error, setJobId)) {
+          setTextError("A note is already being prepared. Wait for it to finish.")
+          return
+        }
         setTextError(getApiErrorMessage(error, "Could not add this note."))
       }
     },
-    [addReferenceEntry, noteText, textUpload]
+    [formLocked, libraryLimit, noteText, remainingSlots, textUpload]
   )
 
   const handleAddLink = React.useCallback(
     async (event: React.FormEvent<HTMLFormElement>) => {
       event.preventDefault()
+      if (formLocked) return
       const url = parseHttpUrl(noteLink)
       if (!url) {
         setLinkError("Enter a full link that starts with http:// or https://.")
+        return
+      }
+      if (remainingSlots <= 0) {
+        setLinkError(
+          `Notes library is full (${libraryLimit}/${libraryLimit}). Remove a note to add another.`
+        )
         return
       }
       setLinkError(null)
       setSaveMessage(null)
       try {
         await linkUpload.mutateAsync(url)
-        addReferenceEntry({
-          name: url,
-          size: "Link",
-          source: "link",
-        })
         setNoteLink("")
-        setSaveMessage("Link saved. Writr is preparing it.")
+        setSaveMessage("Link queued. Writr is preparing it.")
       } catch (error) {
+        if (adoptBusyJob(error, setJobId)) {
+          setLinkError("A note is already being prepared. Wait for it to finish.")
+          return
+        }
         setLinkError(getApiErrorMessage(error, "Could not add this link."))
       }
     },
-    [addReferenceEntry, linkUpload, noteLink]
+    [formLocked, libraryLimit, linkUpload, noteLink, remainingSlots]
   )
 
   const handleAddSample = React.useCallback(() => {
+    if (formLocked || remainingSlots <= 0) return
     const sampleNames = [
       "character_notes.md",
       "world_lore.txt",
-      "research_notes.pdf",
+      "research_notes.md",
     ]
     const nextName = sampleNames[Math.floor(Math.random() * sampleNames.length)]
     const mockFile = new File(
-      ["# Notes for your story\n..."],
+      ["# Notes for your story\nUse this sample while you try Writr.\n"],
       nextName,
-      { type: nextName.endsWith(".pdf") ? "application/pdf" : "text/plain" }
+      { type: "text/plain" }
     )
     handleFilesSelected([mockFile])
-  }, [handleFilesSelected])
+  }, [formLocked, handleFilesSelected, remainingSlots])
 
   React.useEffect(() => {
     if (window.location.hash === "#notes" || window.location.hash === "#corpus") {
@@ -332,14 +473,14 @@ export default function DashboardPage() {
 
           <div className="flex flex-wrap items-center gap-2">
             <Button
-              onClick={handleRefresh}
+              onClick={() => void handleRefresh()}
               size="sm"
               variant={bannerTone === "needs-update" ? "default" : "outline"}
-              disabled={bannerTone === "updating"}
+              disabled={formLocked}
             >
               <RefreshCw
                 data-icon="inline-start"
-                className={bannerTone === "updating" ? "animate-spin" : undefined}
+                className={formLocked ? "animate-spin" : undefined}
               />
               Refresh notes
             </Button>
@@ -481,7 +622,8 @@ export default function DashboardPage() {
               <h2 className="text-lg font-bold text-foreground">Notes library</h2>
             </div>
             <p className="mt-1 max-w-xl text-xs leading-relaxed text-muted-foreground sm:text-sm">
-              Add files, paste text, or save a link. Writr uses these when you write or review.
+              Add files, paste text, or save a link. Up to {libraryLimit} notes ·{" "}
+              {MAX_DOCUMENTS_PER_UPLOAD} files at a time.
             </p>
           </div>
 
@@ -491,6 +633,7 @@ export default function DashboardPage() {
               variant="outline"
               size="sm"
               onClick={handleAddSample}
+              disabled={formLocked || remainingSlots <= 0}
               className="flex-1 sm:flex-none"
             >
               <Plus data-icon="inline-start" />
@@ -499,13 +642,13 @@ export default function DashboardPage() {
             <Button
               type="button"
               size="sm"
-              onClick={handleRefresh}
-              disabled={bannerTone === "updating"}
+              onClick={() => void handleRefresh()}
+              disabled={formLocked}
               className="flex-1 sm:flex-none"
             >
               <RefreshCw
                 data-icon="inline-start"
-                className={bannerTone === "updating" ? "animate-spin" : undefined}
+                className={formLocked ? "animate-spin" : undefined}
               />
               Refresh
             </Button>
@@ -538,11 +681,14 @@ export default function DashboardPage() {
                 aria-selected={selected}
                 aria-controls={`notes-panel-${item.id}`}
                 tabIndex={selected ? 0 : -1}
-                onClick={() => setNoteInput(item.id)}
-                className={`inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-[calc(var(--radius)-2px)] text-sm font-medium transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring ${
+                onClick={() => {
+                  if (!formLocked) setNoteInput(item.id)
+                }}
+                disabled={formLocked}
+                className={`inline-flex h-11 items-center justify-center gap-2 rounded-[calc(var(--radius)-2px)] text-sm font-medium transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60 ${
                   selected
-                    ? "bg-background text-foreground shadow-xs"
-                    : "text-muted-foreground hover:text-foreground"
+                    ? "cursor-pointer bg-background text-foreground shadow-xs"
+                    : "cursor-pointer text-muted-foreground hover:text-foreground"
                 }`}
               >
                 <Icon className="size-4" aria-hidden="true" />
@@ -562,20 +708,24 @@ export default function DashboardPage() {
           <label
             onDragOver={(e) => {
               e.preventDefault()
-              setIsDragging(true)
+              if (!formLocked && remainingSlots > 0) setIsDragging(true)
             }}
             onDragLeave={() => setIsDragging(false)}
             onDrop={(e) => {
               e.preventDefault()
               setIsDragging(false)
+              if (formLocked || remainingSlots <= 0) return
               if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
                 handleFilesSelected(Array.from(e.dataTransfer.files))
               }
             }}
-            className={`flex min-h-[160px] cursor-pointer flex-col items-center justify-center gap-3 rounded-[var(--radius)] border-2 border-dashed p-6 text-center transition-colors focus-within:ring-2 focus-within:ring-ring sm:min-h-[180px] sm:p-8 ${
-              isDragging
-                ? "border-primary bg-primary/5"
-                : "border-border hover:border-primary/50 hover:bg-muted/30"
+            aria-disabled={formLocked || remainingSlots <= 0}
+            className={`flex min-h-[160px] flex-col items-center justify-center gap-3 rounded-[var(--radius)] border-2 border-dashed p-6 text-center transition-colors focus-within:ring-2 focus-within:ring-ring sm:min-h-[180px] sm:p-8 ${
+              formLocked || remainingSlots <= 0
+                ? "cursor-not-allowed border-border opacity-60"
+                : isDragging
+                  ? "cursor-pointer border-primary bg-primary/5"
+                  : "cursor-pointer border-border hover:border-primary/50 hover:bg-muted/30"
             }`}
           >
             <input
@@ -583,6 +733,7 @@ export default function DashboardPage() {
               ref={fileInputRef}
               className="sr-only"
               multiple
+              disabled={formLocked || remainingSlots <= 0}
               aria-label="Choose note files"
               accept=".pdf,.docx,.txt,.md,.epub"
               onChange={(e) => {
@@ -598,14 +749,25 @@ export default function DashboardPage() {
             <div className="flex flex-col gap-1">
               <h3 className="text-sm font-semibold text-foreground">Add research notes</h3>
               <p id="notes-upload-help" className="max-w-sm text-xs leading-relaxed text-muted-foreground">
-                PDF, Word, text, EPUB, or Markdown. Drop files here or choose them.
+                PDF, Word, text, EPUB, or Markdown. Up to {MAX_DOCUMENTS_PER_UPLOAD} files now
+                · {remainingSlots} slot{remainingSlots === 1 ? "" : "s"} left.
               </p>
             </div>
-            <span className={cn(buttonVariants())}>
+            <span
+              className={cn(
+                buttonVariants(),
+                (formLocked || remainingSlots <= 0) && "pointer-events-none opacity-60"
+              )}
+            >
               <UploadCloud data-icon="inline-start" />
-              Choose files
+              {formLocked ? "Preparing…" : remainingSlots <= 0 ? "Library full" : "Choose files"}
             </span>
           </label>
+          {filesError ? (
+            <p role="alert" className="mt-2 text-xs text-destructive">
+              {filesError}
+            </p>
+          ) : null}
         </div>
 
         <div
@@ -615,7 +777,7 @@ export default function DashboardPage() {
           hidden={noteInput !== "text"}
           className="mt-4"
         >
-          <form onSubmit={handleAddText} className="flex flex-col gap-3">
+          <form onSubmit={handleAddText} className="flex flex-col gap-3" aria-disabled={formLocked}>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="note-text">Note</Label>
               <textarea
@@ -624,6 +786,7 @@ export default function DashboardPage() {
                 rows={6}
                 placeholder="Paste lore, research, or a scene…"
                 autoComplete="off"
+                disabled={formLocked || remainingSlots <= 0}
                 aria-invalid={textError ? true : undefined}
                 aria-describedby={textError ? "note-text-help note-text-error" : "note-text-help"}
                 onChange={(event) => {
@@ -631,10 +794,12 @@ export default function DashboardPage() {
                   if (textError) setTextError(null)
                   if (saveMessage) setSaveMessage(null)
                 }}
-                className="min-h-36 w-full resize-y rounded-[var(--radius)] border border-input bg-transparent px-3 py-2 text-base leading-relaxed outline-none transition-[color,box-shadow] placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 aria-invalid:border-destructive aria-invalid:ring-destructive/20 md:text-sm"
+                className="min-h-36 w-full resize-y rounded-[var(--radius)] border border-input bg-transparent px-3 py-2 text-base leading-relaxed outline-none transition-[color,box-shadow] placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 aria-invalid:border-destructive aria-invalid:ring-destructive/20 disabled:cursor-not-allowed disabled:opacity-60 md:text-sm"
               />
               <p id="note-text-help" className="text-xs leading-relaxed text-muted-foreground">
-                Writr saves this with your notes and reads it when you write or review.
+                {formLocked
+                  ? "Wait until the current note finishes preparing."
+                  : "Writr saves this with your notes and reads it when you write or review."}
               </p>
               {textError ? (
                 <p id="note-text-error" role="alert" className="text-xs text-destructive">
@@ -643,8 +808,13 @@ export default function DashboardPage() {
               ) : null}
             </div>
             <div className="flex justify-end">
-              <Button type="submit" disabled={textUpload.isPending || noteText.trim().length === 0}>
-                {textUpload.isPending ? "Adding…" : "Add note"}
+              <Button
+                type="submit"
+                disabled={
+                  formLocked || remainingSlots <= 0 || textUpload.isPending || noteText.trim().length === 0
+                }
+              >
+                {textUpload.isPending || formLocked ? "Adding…" : "Add note"}
               </Button>
             </div>
           </form>
@@ -657,7 +827,7 @@ export default function DashboardPage() {
           hidden={noteInput !== "link"}
           className="mt-4"
         >
-          <form onSubmit={handleAddLink} className="flex flex-col gap-3">
+          <form onSubmit={handleAddLink} className="flex flex-col gap-3" aria-disabled={formLocked}>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="note-link">Link</Label>
               <Input
@@ -667,6 +837,7 @@ export default function DashboardPage() {
                 autoComplete="url"
                 placeholder="https://example.com/article"
                 value={noteLink}
+                disabled={formLocked || remainingSlots <= 0}
                 aria-invalid={linkError ? true : undefined}
                 aria-describedby={linkError ? "note-link-help note-link-error" : "note-link-help"}
                 onChange={(event) => {
@@ -676,7 +847,9 @@ export default function DashboardPage() {
                 }}
               />
               <p id="note-link-help" className="text-xs leading-relaxed text-muted-foreground">
-                A public page. Writr fetches it and saves it with your notes.
+                {formLocked
+                  ? "Wait until the current note finishes preparing."
+                  : "A public page. Writr fetches it and saves it with your notes."}
               </p>
               {linkError ? (
                 <p id="note-link-error" role="alert" className="text-xs text-destructive">
@@ -685,9 +858,14 @@ export default function DashboardPage() {
               ) : null}
             </div>
             <div className="flex justify-end">
-              <Button type="submit" disabled={linkUpload.isPending || noteLink.trim().length === 0}>
+              <Button
+                type="submit"
+                disabled={
+                  formLocked || remainingSlots <= 0 || linkUpload.isPending || noteLink.trim().length === 0
+                }
+              >
                 <Link2 data-icon="inline-start" />
-                {linkUpload.isPending ? "Adding…" : "Add link"}
+                {linkUpload.isPending || formLocked ? "Adding…" : "Add link"}
               </Button>
             </div>
           </form>
@@ -707,14 +885,20 @@ export default function DashboardPage() {
         <div className="mt-5">
           <div className="flex items-center justify-between gap-2 pb-3">
             <h3 className="text-xs font-semibold text-muted-foreground">
-              Your notes ({referenceDocuments.length})
+              Your notes ({totalFiles}/{libraryLimit})
             </h3>
           </div>
 
           <div className="divide-y divide-border border-y border-border">
-            {referenceDocuments.length === 0 ? (
+            {isLoading ? (
               <div className="px-2 py-10 text-center text-xs leading-relaxed text-muted-foreground">
-                No notes yet. Add a file, paste text, or save a link.
+                Loading your notes…
+              </div>
+            ) : referenceDocuments.length === 0 ? (
+              <div className="px-2 py-10 text-center text-xs leading-relaxed text-muted-foreground">
+                {formLocked
+                  ? "Preparing your first note…"
+                  : "No notes yet. Add a file, paste text, or save a link."}
               </div>
             ) : (
               referenceDocuments.map((doc) => (
@@ -739,8 +923,7 @@ export default function DashboardPage() {
                         {doc.name}
                       </p>
                       <p className="truncate text-[11px] text-muted-foreground tabular-nums">
-                        {doc.size}
-                        {doc.chunks > 0 ? ` · ${doc.chunks} sections` : null}
+                        {doc.chunks > 0 ? `${doc.chunks} sections` : doc.size}
                       </p>
                     </div>
                   </div>
@@ -771,10 +954,6 @@ export default function DashboardPage() {
                         <AlertTriangle data-icon="inline-start" />
                         error
                       </Badge>
-                    ) : doc.isStale ? (
-                      <Badge variant="outline" className="border-amber-500/30 text-amber-700 dark:text-amber-400">
-                        Needs refresh
-                      </Badge>
                     ) : (
                       <Badge variant="secondary">
                         <CheckCircle2 data-icon="inline-start" />
@@ -786,7 +965,8 @@ export default function DashboardPage() {
                       type="button"
                       variant="ghost"
                       size="icon-sm"
-                      onClick={() => deleteReferenceDocument(doc.id)}
+                      disabled={formLocked || isDeleting}
+                      onClick={() => void deleteReferenceDocument(doc.id)}
                       aria-label={`Remove ${doc.name}`}
                     >
                       <Trash2 />
@@ -806,7 +986,9 @@ export default function DashboardPage() {
           setIsConfirmOpen(false)
           setPendingUpload(null)
         }}
-        onConfirm={(files) => addReferenceFiles(files)}
+        onConfirm={(files) => {
+          void handleConfirmFiles(files)
+        }}
       />
     </div>
   )

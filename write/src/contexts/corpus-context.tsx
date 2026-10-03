@@ -1,160 +1,171 @@
 /* eslint-disable react-refresh/only-export-components */
 import * as React from "react"
-import { uploadFileApi } from "@/lib/api-client"
-import { formatFileSize } from "@/lib/format-file-size"
-import type { NoteSource, ReferenceDocumentItem } from "@/types/document-roles"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import {
+  activeUploadQuery,
+  deleteLibraryDocumentMutation,
+  libraryQuery,
+  MAX_REFERENCE_DOCUMENTS_PER_USER,
+} from "@/api"
+import type { LibraryDocument } from "@/api/endpoints/library"
+import { useAuth } from "@/contexts/auth-context"
+import type {
+  EmbeddingStatus,
+  NoteSource,
+  ReferenceDocumentItem,
+} from "@/types/document-roles"
 
 interface CorpusContextType {
   referenceDocuments: ReferenceDocumentItem[]
   isEmbedding: boolean
+  isLoading: boolean
   totalChunks: number
   totalFiles: number
-  addReferenceFiles: (files: File[]) => void
-  addReferenceEntry: (entry: { name: string; size: string; source: Exclude<NoteSource, "file"> }) => void
-  deleteReferenceDocument: (id: string) => void
-  reindexAll: () => void
+  libraryLimit: number
+  remainingSlots: number
+  /** In-flight upload job id from the server (survives refresh). */
+  activeJobId: string | null
+  activeJobStatus: string | null
+  refreshLibrary: () => Promise<void>
+  deleteReferenceDocument: (id: string) => Promise<void>
+  isDeleting: boolean
 }
 
 const CorpusContext = React.createContext<CorpusContextType | undefined>(undefined)
 
-export function CorpusProvider({ children }: { children: React.ReactNode }) {
-  const [referenceDocuments, setReferenceDocuments] = React.useState<ReferenceDocumentItem[]>([])
+function mapEmbeddingStatus(status: string | undefined): EmbeddingStatus {
+  switch (status) {
+    case "completed":
+      return "ready"
+    case "processing":
+      return "embedding"
+    case "failed":
+      return "error"
+    case "pending":
+      return "queued"
+    default:
+      return "idle"
+  }
+}
 
-  const isEmbedding = referenceDocuments.some(
-    (d) => d.embeddingStatus === "embedding" || d.embeddingStatus === "queued"
+function inferSource(name: string): NoteSource | undefined {
+  const lower = name.toLowerCase()
+  if (lower.startsWith("untitled text") || lower.startsWith("pasted note")) {
+    return "text"
+  }
+  if (lower.startsWith("untitled url") || /^https?:\/\//i.test(name)) {
+    return "link"
+  }
+  return "file"
+}
+
+function mapLibraryDocument(doc: LibraryDocument): ReferenceDocumentItem {
+  const embeddingStatus = mapEmbeddingStatus(doc.embedding_status)
+  return {
+    id: doc.id,
+    name: doc.name || "Untitled note",
+    size: doc.chunk_count > 0 ? `${doc.chunk_count} sections` : "Preparing",
+    role: "reference",
+    source: inferSource(doc.name || ""),
+    uploadedAt: doc.created_at ? new Date(doc.created_at) : new Date(),
+    embeddingStatus,
+    embeddingProgress:
+      embeddingStatus === "ready" ? 100 : embeddingStatus === "embedding" ? 55 : 10,
+    chunks: doc.chunk_count || 0,
+    isStale: false,
+    error: embeddingStatus === "error" ? "Could not prepare this note." : undefined,
+  }
+}
+
+export function CorpusProvider({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated } = useAuth()
+  const queryClient = useQueryClient()
+
+  const library = useQuery({
+    ...libraryQuery,
+    enabled: isAuthenticated,
+  })
+
+  const activeUpload = useQuery({
+    ...activeUploadQuery,
+    enabled: isAuthenticated,
+    refetchInterval: (query) => {
+      const status = query.state.data?.status
+      if (status === "queued" || status === "running") return 2000
+      // Keep a slow poll so a refresh mid-job still unlocks when work finishes.
+      return false
+    },
+  })
+
+  const deleteMutation = useMutation({
+    ...deleteLibraryDocumentMutation,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: libraryQuery.queryKey })
+    },
+  })
+
+  const referenceDocuments = React.useMemo(
+    () => (library.data?.documents ?? []).map(mapLibraryDocument),
+    [library.data?.documents]
   )
+
+  const libraryLimit = library.data?.limit ?? MAX_REFERENCE_DOCUMENTS_PER_USER
+  const totalFiles = library.data?.count ?? referenceDocuments.length
+  const remainingSlots = Math.max(0, libraryLimit - totalFiles)
+
+  const isEmbedding =
+    activeUpload.data?.status === "queued" ||
+    activeUpload.data?.status === "running" ||
+    referenceDocuments.some(
+      (d) => d.embeddingStatus === "embedding" || d.embeddingStatus === "queued"
+    )
 
   const totalChunks = referenceDocuments
     .filter((d) => d.embeddingStatus === "ready")
     .reduce((acc, d) => acc + d.chunks, 0)
 
-  const totalFiles = referenceDocuments.length
+  const refreshLibrary = React.useCallback(async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: libraryQuery.queryKey }),
+      queryClient.invalidateQueries({ queryKey: activeUploadQuery.queryKey }),
+    ])
+  }, [queryClient])
 
-  const addReferenceFiles = React.useCallback((files: File[]) => {
-    if (files.length === 0) return
-
-    const newDocs: ReferenceDocumentItem[] = files.map((file, idx) => ({
-      id: `ref-${Date.now()}-${idx}`,
-      file,
-      name: file.name,
-      size: formatFileSize(file.size),
-      role: "reference",
-      uploadedAt: new Date(),
-      embeddingStatus: "embedding",
-      embeddingProgress: 10,
-      chunks: Math.max(12, Math.round(file.size / 800)),
-      isStale: false,
-    }))
-
-    setReferenceDocuments((prev) => [...newDocs, ...prev])
-
-    // Kick off vector embedding pipeline for each reference document
-    newDocs.forEach((doc) => {
-      if (doc.file) {
-        uploadFileApi(doc.file, "reference", (progress) => {
-          setReferenceDocuments((prev) =>
-            prev.map((d) =>
-              d.id === doc.id
-                ? {
-                    ...d,
-                    embeddingProgress: progress,
-                    embeddingStatus: progress >= 100 ? "ready" : "embedding",
-                  }
-                : d
-            )
-          )
-        }).then((res) => {
-          setReferenceDocuments((prev) =>
-            prev.map((d) =>
-              d.id === doc.id
-                ? {
-                    ...d,
-                    id: res.id,
-                    chunks: res.chunks,
-                    embeddingProgress: 100,
-                    embeddingStatus: "ready",
-                  }
-                : d
-            )
-          )
-        })
-      }
-    })
-  }, [])
-
-  const addReferenceEntry = React.useCallback(
-    (entry: { name: string; size: string; source: Exclude<NoteSource, "file"> }) => {
-      const doc: ReferenceDocumentItem = {
-        id: `ref-${Date.now()}`,
-        name: entry.name,
-        size: entry.size,
-        role: "reference",
-        source: entry.source,
-        uploadedAt: new Date(),
-        embeddingStatus: "queued",
-        embeddingProgress: 0,
-        chunks: 0,
-        isStale: false,
-      }
-      setReferenceDocuments((prev) => [doc, ...prev])
+  const deleteReferenceDocument = React.useCallback(
+    async (id: string) => {
+      await deleteMutation.mutateAsync(id)
     },
-    []
+    [deleteMutation]
   )
-
-  const deleteReferenceDocument = React.useCallback((id: string) => {
-    setReferenceDocuments((prev) => prev.filter((d) => d.id !== id))
-  }, [])
-
-  const reindexAll = React.useCallback(() => {
-    setReferenceDocuments((prev) =>
-      prev.map((d) => ({
-        ...d,
-        embeddingStatus: "embedding",
-        embeddingProgress: 20,
-      }))
-    )
-
-    setTimeout(() => {
-      setReferenceDocuments((prev) =>
-        prev.map((d) => ({
-          ...d,
-          embeddingProgress: 60,
-        }))
-      )
-    }, 400)
-
-    setTimeout(() => {
-      setReferenceDocuments((prev) =>
-        prev.map((d) => ({
-          ...d,
-          embeddingProgress: 100,
-          embeddingStatus: "ready",
-          isStale: false,
-        }))
-      )
-    }, 900)
-  }, [])
 
   const value = React.useMemo(
     () => ({
       referenceDocuments,
       isEmbedding,
+      isLoading: library.isLoading,
       totalChunks,
       totalFiles,
-      addReferenceFiles,
-      addReferenceEntry,
+      libraryLimit,
+      remainingSlots,
+      activeJobId: activeUpload.data?.job_id ?? null,
+      activeJobStatus: activeUpload.data?.status ?? null,
+      refreshLibrary,
       deleteReferenceDocument,
-      reindexAll,
+      isDeleting: deleteMutation.isPending,
     }),
     [
       referenceDocuments,
       isEmbedding,
+      library.isLoading,
       totalChunks,
       totalFiles,
-      addReferenceFiles,
-      addReferenceEntry,
+      libraryLimit,
+      remainingSlots,
+      activeUpload.data?.job_id,
+      activeUpload.data?.status,
+      refreshLibrary,
       deleteReferenceDocument,
-      reindexAll,
+      deleteMutation.isPending,
     ]
   )
 
