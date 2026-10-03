@@ -354,3 +354,20 @@ async def upload_link(
         user_id=user_id,
     )
     return _enqueued(job)
+
+
+@UploadRouter.get("/status", response_model=EnqueuedJob)
+async def get_upload_status(
+    request: Request,
+    user_id: CurrentUserIdDep,
+    connector: ConnectorDep,
+    job_id: str,
+) -> EnqueuedJob:
+    """Get the status of an upload job."""
+    job = await connector.get_job(job_id)
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found.",
+        )
+    return _enqueued(job)
