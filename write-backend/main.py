@@ -105,7 +105,7 @@ app.add_middleware(
 app.add_middleware(WideEventMiddleware)
 
 app.include_router(UploadRouter)
-# Vercel Cron drain (no long-lived worker when VERCEL is set).
+# Supabase Cron drain endpoint (no long-lived worker when VERCEL is set).
 app.include_router(DrainRouter)
 
 

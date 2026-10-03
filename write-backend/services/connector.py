@@ -104,6 +104,9 @@ class Connector:
         self.queue = queue
         self.writr_vector_store = writr_vector_store
 
+    async def get_job(self, job_id: str, owner_id: str) -> dict | None:
+        return await self.queue.get_job(job_id, owner_id)
+
     async def _require_idle_owner(self, owner_id: str) -> None:
         """Stop before enqueue when this owner already has a queued or running job."""
         active = await self.queue.find_active_job(owner_id)

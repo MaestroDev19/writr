@@ -1,8 +1,9 @@
 """Serverless job drain: claim and run queued background work.
 
 On Vercel the long-lived worker loop is disabled (see ``main.lifespan``).
-Vercel Cron hits ``GET /internal/drain-jobs`` with ``Authorization: Bearer
-$CRON_SECRET`` so queued rows still get processed.
+Supabase ``pg_cron`` + ``pg_net`` (see ``docs/supabase-drain-cron.sql``) hits
+``GET /internal/drain-jobs`` with ``Authorization: Bearer $CRON_SECRET`` so
+queued rows still get processed without relying on Vercel Cron.
 """
 
 from __future__ import annotations

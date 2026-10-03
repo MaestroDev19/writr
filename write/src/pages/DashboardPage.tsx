@@ -1,14 +1,13 @@
 import * as React from "react"
 import { Link, useNavigate } from "react-router-dom"
-import { useMutation } from "@tanstack/react-query"
+import { useMutation, useQuery } from "@tanstack/react-query"
 import { useAuth } from "@/contexts/auth-context"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { cn } from "cn"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { uploadLink, uploadText } from "@/api/endpoints/upload"
-import { getUploadStatusQuery, uploadLinkMutation } from "@/api"
+import { uploadLinkMutation, uploadStatusQuery, uploadTextMutation } from "@/api"
 import { getApiErrorMessage } from "@/lib/axios"
 import { formatFileSize } from "@/lib/format-file-size"
 import {
@@ -38,7 +37,19 @@ import {
 import { EmbeddingMonitor } from "@/components/embedding-monitor"
 
 type LibraryState = "ready" | "updating" | "needs-update"
+type BannerTone = LibraryState | "error"
 type NoteInput = "files" | "text" | "link"
+
+/** Queue status from the upload job, shown on the notes library card. */
+function jobStatusBanner(
+  status: string | undefined
+): { tone: BannerTone; label: string } | null {
+  if (status === "queued") return { tone: "updating", label: "queued / waiting" }
+  if (status === "running") return { tone: "updating", label: "embedding / preparing" }
+  if (status === "succeeded") return { tone: "ready", label: "ready" }
+  if (status === "failed" || status === "dead") return { tone: "error", label: "error" }
+  return null
+}
 
 const NOTE_INPUTS: { id: NoteInput; label: string }[] = [
   { id: "files", label: "Files" },
@@ -97,17 +108,42 @@ export default function DashboardPage() {
   const [saveMessage, setSaveMessage] = React.useState<string | null>(null)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const [jobId, setJobId] = React.useState<string | null>(null)
-  const textUpload = useMutation({ mutationFn: uploadText })
-  const linkUpload = useMutation({ mutationFn: uploadLink })
-  const upload = useMutation({
+  const textUpload = useMutation({
+    ...uploadTextMutation,
+    onSuccess: (data) => setJobId(data.job_id),
+  })
+  const linkUpload = useMutation({
     ...uploadLinkMutation,
     onSuccess: (data) => setJobId(data.job_id),
+  })
+  const { data: job } = useQuery({
+    ...uploadStatusQuery(jobId ?? ""),
+    enabled: Boolean(jobId),
+    refetchInterval: (query) => {
+      const status = query.state.data?.status
+      if (!status) return 2000
+      if (status === "queued" || status === "running") return 2000
+      return false
+    },
   })
   const libraryState: LibraryState = isEmbedding
     ? "updating"
     : needsUpdate
       ? "needs-update"
       : "ready"
+  const jobBanner = jobId
+    ? (jobStatusBanner(job?.status) ?? {
+        tone: "updating" as const,
+        label: "queued / waiting",
+      })
+    : null
+  const bannerTone: BannerTone =
+    jobBanner?.tone ??
+    (libraryState === "updating"
+      ? "updating"
+      : libraryState === "needs-update"
+        ? "needs-update"
+        : "ready")
 
   const updateProgress = React.useMemo(() => {
     if (!isEmbedding) return 100
@@ -119,6 +155,15 @@ export default function DashboardPage() {
     }, 0)
     return Math.min(99, Math.max(15, Math.round(sum / referenceDocuments.length)))
   }, [isEmbedding, referenceDocuments])
+
+  const bannerLabel =
+    jobBanner?.label ??
+    (libraryState === "updating"
+      ? `Preparing notes (${updateProgress}%)`
+      : libraryState === "needs-update"
+        ? "Notes need a refresh"
+        : "Notes ready")
+  const jobInFlight = jobBanner?.tone === "updating"
 
   const handleRefresh = React.useCallback(() => {
     setNeedsUpdate(false)
@@ -229,27 +274,31 @@ export default function DashboardPage() {
         aria-label="Notes library status"
         aria-live="polite"
         className={`rounded-[var(--radius-xl)] border p-4 transition-colors sm:p-5 ${
-          libraryState === "needs-update"
+          bannerTone === "needs-update"
             ? "border-amber-500/40 bg-amber-500/5"
-            : libraryState === "updating"
-              ? "border-primary/40 bg-primary/5"
-              : "border-border bg-card shadow-xs"
+            : bannerTone === "error"
+              ? "border-destructive/40 bg-destructive/5"
+              : bannerTone === "updating"
+                ? "border-primary/40 bg-primary/5"
+                : "border-border bg-card shadow-xs"
         }`}
       >
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-3">
             <div
               className={`mt-0.5 flex size-10 shrink-0 items-center justify-center rounded-[var(--radius)] ${
-                libraryState === "needs-update"
+                bannerTone === "needs-update"
                   ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
-                  : libraryState === "updating"
-                    ? "bg-primary/15 text-primary"
-                    : "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                  : bannerTone === "error"
+                    ? "bg-destructive/15 text-destructive"
+                    : bannerTone === "updating"
+                      ? "bg-primary/15 text-primary"
+                      : "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
               }`}
             >
-              {libraryState === "needs-update" ? (
+              {bannerTone === "needs-update" || bannerTone === "error" ? (
                 <AlertTriangle className="size-5" aria-hidden="true" />
-              ) : libraryState === "updating" ? (
+              ) : bannerTone === "updating" ? (
                 <RefreshCw className="size-5 animate-spin" aria-hidden="true" />
               ) : (
                 <CheckCircle2 className="size-5" aria-hidden="true" />
@@ -259,11 +308,7 @@ export default function DashboardPage() {
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm font-bold text-foreground">
-                  {libraryState === "updating"
-                    ? `Preparing notes (${updateProgress}%)`
-                    : libraryState === "needs-update"
-                      ? "Notes need a refresh"
-                      : "Notes ready"}
+                  {bannerLabel}
                 </span>
                 <Badge variant="outline">
                   <Cloud data-icon="inline-start" />
@@ -289,12 +334,12 @@ export default function DashboardPage() {
             <Button
               onClick={handleRefresh}
               size="sm"
-              variant={libraryState === "needs-update" ? "default" : "outline"}
-              disabled={libraryState === "updating"}
+              variant={bannerTone === "needs-update" ? "default" : "outline"}
+              disabled={bannerTone === "updating"}
             >
               <RefreshCw
                 data-icon="inline-start"
-                className={libraryState === "updating" ? "animate-spin" : undefined}
+                className={bannerTone === "updating" ? "animate-spin" : undefined}
               />
               Refresh notes
             </Button>
@@ -314,23 +359,29 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {libraryState === "updating" ? (
+        {bannerTone === "updating" ? (
           <div
             className="mt-4 w-full"
             role="progressbar"
-            aria-valuenow={updateProgress}
+            aria-valuenow={jobInFlight ? undefined : updateProgress}
             aria-valuemin={0}
             aria-valuemax={100}
             aria-label="Notes update progress"
           >
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-primary/20">
-              <div
-                className="h-full bg-primary transition-[width] duration-300"
-                style={{ width: `${updateProgress}%` }}
-              />
+              {jobInFlight ? (
+                <div className="h-full w-1/3 animate-pulse bg-primary" />
+              ) : (
+                <div
+                  className="h-full bg-primary transition-[width] duration-300"
+                  style={{ width: `${updateProgress}%` }}
+                />
+              )}
             </div>
             <p className="mt-1 text-[11px] text-muted-foreground">
-              Reading your notes so Writr can use them when you write…
+              {bannerLabel === "queued / waiting"
+                ? "Waiting to start reading your notes…"
+                : "Reading your notes so Writr can use them when you write…"}
             </p>
           </div>
         ) : null}
@@ -449,12 +500,12 @@ export default function DashboardPage() {
               type="button"
               size="sm"
               onClick={handleRefresh}
-              disabled={libraryState === "updating"}
+              disabled={bannerTone === "updating"}
               className="flex-1 sm:flex-none"
             >
               <RefreshCw
                 data-icon="inline-start"
-                className={libraryState === "updating" ? "animate-spin" : undefined}
+                className={bannerTone === "updating" ? "animate-spin" : undefined}
               />
               Refresh
             </Button>
@@ -650,7 +701,7 @@ export default function DashboardPage() {
         </p>
 
         <div className="mt-5">
-          <EmbeddingMonitor files={referenceDocuments} />
+          <EmbeddingMonitor files={referenceDocuments} jobBanner={jobBanner} />
         </div>
 
         <div className="mt-5">
@@ -696,11 +747,29 @@ export default function DashboardPage() {
 
                   <div className="flex shrink-0 items-center gap-2">
                     {doc.embeddingStatus === "queued" || doc.embeddingStatus === "embedding" ? (
-                      <Badge variant="secondary">
-                        <RefreshCw data-icon="inline-start" className="animate-spin" />
-                        {doc.embeddingStatus === "embedding"
-                          ? `Preparing ${doc.embeddingProgress}%`
-                          : "Preparing"}
+                      jobBanner?.tone === "error" ? (
+                        <Badge variant="outline" className="border-destructive/40 text-destructive">
+                          <AlertTriangle data-icon="inline-start" />
+                          error
+                        </Badge>
+                      ) : jobBanner?.tone === "ready" ? (
+                        <Badge variant="secondary">
+                          <CheckCircle2 data-icon="inline-start" />
+                          ready
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary">
+                          <RefreshCw data-icon="inline-start" className="animate-spin" />
+                          {jobBanner?.label ??
+                            (doc.embeddingStatus === "embedding"
+                              ? `Preparing ${doc.embeddingProgress}%`
+                              : "Preparing")}
+                        </Badge>
+                      )
+                    ) : doc.embeddingStatus === "error" ? (
+                      <Badge variant="outline" className="border-destructive/40 text-destructive">
+                        <AlertTriangle data-icon="inline-start" />
+                        error
                       </Badge>
                     ) : doc.isStale ? (
                       <Badge variant="outline" className="border-amber-500/30 text-amber-700 dark:text-amber-400">

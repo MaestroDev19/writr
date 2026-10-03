@@ -42,7 +42,10 @@ export const uploadLinkMutation = mutationApiHelper(
   (url: string) => uploadLink(url)
 )
 
-export const getUploadStatusQuery = queryApiHelper(
-  ["upload", "status"],
-  (job_id: string) => getUploadStatus(job_id)
-)
+/** Poll one upload job. Key includes the id so each job has its own cache entry. */
+export function uploadStatusQuery(jobId: string) {
+  return queryApiHelper(
+    ["upload", "status", jobId] as const,
+    () => getUploadStatus(jobId)
+  )
+}

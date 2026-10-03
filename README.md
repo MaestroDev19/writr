@@ -84,7 +84,7 @@ bun run format       # Prettier
 
 ### Backend surface
 
-Protected routes expect a Supabase JWT. Check Swagger at `/docs` for the live API. Upload ingest is `POST /upload/{text,document,documents,link}` (202 + queued job). On long-lived hosts a worker claims jobs in-process; on Vercel that loop is off and `GET /internal/drain-jobs` is hit by Cron instead.
+Protected routes expect a Supabase JWT. Check Swagger at `/docs` for the live API. Upload ingest is `POST /upload/{text,document,documents,link}` (202 + queued job). On long-lived hosts a worker claims jobs in-process; on Vercel that loop is off and Supabase Cron + `pg_net` hits `GET /internal/drain-jobs` instead (see `docs/supabase-drain-cron.sql`).
 
 ### Desktop
 
@@ -123,7 +123,7 @@ SUPABASE_URL=https://<project-ref>.supabase.co
 SUPABASE_PUBLISHABLE_KEY=your-publishable-key
 SUPABASE_SECRET_KEY=your-secret-key
 
-# Required on Vercel so Cron can drain background_jobs
+# Required so Supabase Cron can drain background_jobs on Vercel
 CRON_SECRET=generate-a-long-random-string
 
 GEMINI_API_KEY=
@@ -134,7 +134,16 @@ GROQ_API_KEY=
 
 Legacy `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` still work. Provider keys are optional at startup; a call fails only when its key is missing. Gemini embeddings are preferred when `GEMINI_API_KEY` is set; OpenAI is the fallback. Keep `EMBEDDING_DIM` (default `768`) aligned with the `pgvector` column.
 
-Set the same `CRON_SECRET` in the Vercel project env. Cron sends `Authorization: Bearer <CRON_SECRET>` to `GET /internal/drain-jobs` every minute (`write-backend/vercel.json`). Hobby plans may only allow daily crons — use Pro (or a local `uvicorn` worker) if jobs must drain quickly. If Deployment Protection is on, allow Cron through or add a protection bypass for that path.
+### Background job drain (Supabase Cron)
+
+Hobby Vercel only allows daily Vercel Cron, so Writr drains like Pantra:
+
+1. Set `CRON_SECRET` on the Vercel API project (same value in production).
+2. In the Writr Supabase SQL editor, store it in Vault:
+   `select vault.create_secret('YOUR_CRON_SECRET', 'writr_cron_secret');`
+3. Apply [`docs/supabase-drain-cron.sql`](docs/supabase-drain-cron.sql) — schedules `trigger-writr-drain-jobs` every minute via `pg_cron` → `pg_net` → `GET /internal/drain-jobs`.
+
+If Deployment Protection blocks the call, use a production custom domain (recommended) or add a Vercel automation bypass header in the SQL function. A local `uvicorn` worker still works when you are developing offline.
 
 > [!IMPORTANT]
 > CORS currently allows every origin. Narrow `allow_origins` in `write-backend/main.py` before production.

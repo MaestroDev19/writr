@@ -71,6 +71,22 @@ class Queue:
         self.supabase_client = await get_async_service_supabase()
         return self.supabase_client
 
+    async def get_job(self, job_id: str, owner_id: str) -> dict | None:
+        """Load one job for this owner. Payload is omitted."""
+        if not job_id or not owner_id:
+            return None
+        client = await self._client()
+        res = (
+            await client.table("background_jobs")
+            .select("id, owner_id, status")
+            .eq("id", job_id)
+            .eq("owner_id", owner_id)
+            .limit(1)
+            .execute()
+        )
+        rows = res.data or []
+        return rows[0] if rows else None
+
     async def find_active_job(self, owner_id: str) -> dict | None:
         """In-flight generation for this owner, if one exists. Does not insert."""
         if not owner_id or not str(owner_id).strip():
