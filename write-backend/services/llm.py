@@ -5,7 +5,7 @@ Providers:
     (``GEMINI_API_KEY``). This is the Writr-hosted chat model.
   - OpenAI / Groq / OpenRouter — caller's key only (no app default)
 
-Default path (no frontend key): Gemini + ``settings.gemini_chat_model``.
+Default path (no frontend key): Gemini + ``settings.model_name`` (alias: gemini_chat_model).
 """
 
 from __future__ import annotations

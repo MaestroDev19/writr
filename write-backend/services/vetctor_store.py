@@ -438,7 +438,10 @@ class WritrVectorStore:
                 raise VectorStoreError("Chunk content cannot be empty.")
             texts.append(content)
             indexes.append(_chunk_index(document, _i))
-            metadatas.append(_chunk_metadata(document))
+            # owner_id in metadata so LangChain match_documents filter works
+            meta = _chunk_metadata(document)
+            meta["owner_id"] = owner_id
+            metadatas.append(meta)
 
         chunk_count = len(texts)
 
