@@ -45,15 +45,6 @@ from services.supabase import (
     get_supabase,
     supabase,
 )
-from services.user_settings import (
-    EffectiveChatSettings,
-    EffectiveChatSettingsDep,
-    fetch_user_settings_row,
-    get_effective_chat_settings,
-    merge_user_settings_row,
-    resolve_effective_chat_settings,
-)
-
 __all__ = [
     "supabase",
     "get_supabase",
@@ -96,10 +87,4 @@ __all__ = [
     "create_chat_service",
     "get_chat_service",
     "get_gemini_chat_service",
-    "EffectiveChatSettings",
-    "EffectiveChatSettingsDep",
-    "fetch_user_settings_row",
-    "get_effective_chat_settings",
-    "merge_user_settings_row",
-    "resolve_effective_chat_settings",
 ]

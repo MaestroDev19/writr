@@ -7,9 +7,9 @@ How it works:
   - ``get_settings()`` is cached so we parse ``.env`` only once per process.
   - Routes inject settings via ``SettingsDep``.
 
-These are process-wide defaults only. Per-user overrides from
-``user_settings`` are merged in ``services.user_settings`` — never mutate
-this cached instance with DB values (that would leak across requests).
+These are process-wide defaults only. Per-user ``user_settings`` overlays
+are applied in ``ai.model.build_model`` / ``build_model_for_user`` — never
+mutate this cached instance with DB values.
 
 Sensitive keys (API secrets) are optional at the type level so the app can
 start without every provider configured; individual services raise if *their*
@@ -103,12 +103,7 @@ class Settings(BaseSettings):
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
-    """Return the shared env Settings instance (parsed once, then cached).
-
-    This is intentionally env-only. Per-user overlays for model_name,
-    temperature, k, max_token, top_p, and top_k live in
-    ``services.user_settings.resolve_effective_chat_settings``.
-    """
+    """Return the shared env Settings instance (parsed once, then cached)."""
     return Settings()
 
 
