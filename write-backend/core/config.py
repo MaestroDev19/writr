@@ -65,8 +65,10 @@ class Settings(BaseSettings):
     openrouter_api_key: str | None = None
     groq_api_key: str | None = None
 
-    # --- chat defaults (nullable user_settings columns override when set) ---
-    model_name: str = "gemini-2.5-pro"
+    # --- chat defaults (null user_settings columns fall back to these) ---
+    # Write uses generate_* columns; Review uses critique_* columns.
+    # model_name is shared. top_k is env-only.
+    model_name: str = "gemini-3.8-flash"
     temperature: float = 0.0
     k: int = 5
     max_token: int = 1000

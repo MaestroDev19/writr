@@ -1,5 +1,7 @@
 import { z } from "zod"
 
+import { GEMINI_MODEL_IDS } from "@/lib/model-providers"
+
 const workflowPromptConfigSchema = z.object({
   systemPrompt: z.string(),
   temperature: z.number().min(0).max(1.5),
@@ -10,6 +12,7 @@ const workflowPromptConfigSchema = z.object({
 })
 
 export const settingsFormSchema = z.object({
+  geminiModel: z.enum(GEMINI_MODEL_IDS),
   generateConfig: workflowPromptConfigSchema,
   critiqueConfig: workflowPromptConfigSchema,
 })

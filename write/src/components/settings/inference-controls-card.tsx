@@ -24,6 +24,7 @@ interface InferenceControlsCardProps {
   onResetToDefault: () => void
 }
 
+
 export const InferenceControlsCard = React.memo(function InferenceControlsCard({
   control,
   activeWorkflowTab,

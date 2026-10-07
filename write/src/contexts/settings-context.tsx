@@ -2,6 +2,7 @@
 import * as React from "react"
 import {
   formatActiveModelDisplayName,
+  isGeminiFreeModel,
   WRITR_HOSTED_MODEL,
 } from "@/lib/model-providers"
 import type { AppSettings, ModelProvider, WorkflowPromptConfig } from "@/types/settings"
@@ -52,7 +53,7 @@ function sanitizeStoredSettings(raw: Record<string, unknown>): AppSettings {
     storageMode: "default",
     modelProvider,
     geminiModel:
-      typeof raw.geminiModel === "string" && raw.geminiModel
+      typeof raw.geminiModel === "string" && isGeminiFreeModel(raw.geminiModel)
         ? raw.geminiModel
         : DEFAULT_SETTINGS.geminiModel,
     generateConfig: {
@@ -108,16 +109,9 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     })
   }, [])
 
-  // No frontend API key → Writr-hosted Gemini (backend GEMINI_API_KEY).
   const activeModelDisplayName = React.useMemo(
-    () =>
-      formatActiveModelDisplayName({
-        llmSource: "default",
-        modelProvider: settings.modelProvider,
-        hostedModel: settings.geminiModel || WRITR_HOSTED_MODEL,
-        byokModel: "",
-      }),
-    [settings.modelProvider, settings.geminiModel]
+    () => formatActiveModelDisplayName(settings.geminiModel || WRITR_HOSTED_MODEL),
+    [settings.geminiModel]
   )
 
   const value = React.useMemo(

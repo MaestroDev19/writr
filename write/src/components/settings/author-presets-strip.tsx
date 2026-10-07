@@ -11,7 +11,6 @@ interface AuthorPresetsStripProps {
   activeWorkflowTab: "generate" | "critique"
   activePresets: WorkflowPreset[]
   onApplyPreset: (preset: WorkflowPreset) => void
-  presetNotice: string | null
 }
 
 export const AuthorPresetsStrip = React.memo(function AuthorPresetsStrip({
@@ -19,7 +18,6 @@ export const AuthorPresetsStrip = React.memo(function AuthorPresetsStrip({
   activeWorkflowTab,
   activePresets,
   onApplyPreset,
-  presetNotice,
 }: AuthorPresetsStripProps) {
   const currentPrompt = useWatch({
     control,
@@ -33,11 +31,7 @@ export const AuthorPresetsStrip = React.memo(function AuthorPresetsStrip({
           <BookOpen className="size-3.5 text-muted-foreground" aria-hidden="true" />
           <span className="text-xs font-semibold text-foreground">Quick styles</span>
         </div>
-        {presetNotice ? (
-          <span className="text-[11px] font-medium text-primary">{presetNotice}</span>
-        ) : (
-          <span className="text-[11px] text-muted-foreground">Tap one to apply</span>
-        )}
+        <span className="text-[11px] text-muted-foreground">Tap one to apply</span>
       </div>
 
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">

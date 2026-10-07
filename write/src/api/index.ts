@@ -10,6 +10,12 @@ import {
   getActiveUpload,
   listLibrary,
 } from "./endpoints/library"
+import {
+  getMySettings,
+  saveCritiqueSetting,
+  saveGenerateSetting,
+  type WorkflowSettingUpdate,
+} from "./endpoints/setting"
 
 /** Spread into `useQuery({ ...queryApiHelper(...) })`. */
 export function queryApiHelper<T>(
@@ -72,6 +78,20 @@ export function uploadStatusQuery(jobId: string) {
   )
 }
 
+export const mySettingsQuery = queryApiHelper(
+  ["mySetting"] as const,
+  () => getMySettings()
+)
+
+export const saveGenerateSettingMutation = mutationApiHelper(
+  ["mySetting", "generate"],
+  (setting: WorkflowSettingUpdate) => saveGenerateSetting(setting)
+)
+
+export const saveCritiqueSettingMutation = mutationApiHelper(
+  ["mySetting", "critique"],
+  (setting: WorkflowSettingUpdate) => saveCritiqueSetting(setting)
+)
 export {
   MAX_DOCUMENTS_PER_UPLOAD,
   MAX_REFERENCE_DOCUMENTS_PER_USER,

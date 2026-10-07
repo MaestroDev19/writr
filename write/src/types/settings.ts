@@ -1,3 +1,5 @@
+import type { GeminiModelId } from "@/lib/model-providers"
+
 export type StorageMode = "default"
 export type ModelProvider = "gemini" | "groq" | "openai" | "openrouter"
 
@@ -14,8 +16,8 @@ export interface WorkflowPromptConfig {
 export interface AppSettings {
   storageMode: StorageMode
   modelProvider: ModelProvider
-  /** Display / preference for hosted chat model; server may override. */
-  geminiModel: string
+  /** Hosted Gemini chat model. Limited to free-tier text models. */
+  geminiModel: GeminiModelId
   generateConfig?: WorkflowPromptConfig
   critiqueConfig?: WorkflowPromptConfig
 }

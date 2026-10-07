@@ -1,6 +1,7 @@
 import * as React from "react"
-import { useForm } from "react-hook-form"
+import { Controller, useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
+import { toast } from "sonner"
 import { cn } from "cn"
 
 import {
@@ -8,8 +9,30 @@ import {
   DEFAULT_GENERATE_CONFIG,
   DEFAULT_CRITIQUE_CONFIG,
 } from "@/contexts/settings-context"
+import {
+  getMySettings,
+  saveCritiqueSetting,
+  saveGenerateSetting,
+  settingsApiEnabled,
+  settingsPatchFromRemote,
+  toWorkflowUpdate,
+} from "@/api/endpoints/setting"
+import {
+  GEMINI_FREE_MODELS,
+  getGeminiModelMeta,
+  isGeminiFreeModel,
+  WRITR_HOSTED_MODEL,
+} from "@/lib/model-providers"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
+import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field"
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import {
   Card,
   CardContent,
@@ -32,7 +55,6 @@ import {
 
 import {
   Cloud,
-  CheckCircle2,
   Save,
   RefreshCw,
   Sliders,
@@ -41,41 +63,39 @@ import {
   AlertCircle,
 } from "lucide-react"
 
+const GEMINI_MODEL_ITEMS = GEMINI_FREE_MODELS.map((model) => ({
+  label: model.name,
+  value: model.id,
+}))
+
 function toFormValues(
+  geminiModel = WRITR_HOSTED_MODEL,
   generateConfig = DEFAULT_GENERATE_CONFIG,
   critiqueConfig = DEFAULT_CRITIQUE_CONFIG
 ): SettingsFormValues {
   return {
+    geminiModel,
     generateConfig: generateConfig || DEFAULT_GENERATE_CONFIG,
     critiqueConfig: critiqueConfig || DEFAULT_CRITIQUE_CONFIG,
   }
 }
 
 export default function SettingsPage() {
-  const { settings, updateSettings, activeModelDisplayName } = useSettings()
+  const { settings, updateSettings } = useSettings()
 
-  const [saveSuccess, setSaveSuccess] = React.useState(false)
-  const [presetNotice, setPresetNotice] = React.useState<string | null>(null)
   const [activeWorkflowTab, setActiveWorkflowTab] = React.useState<
     "generate" | "critique"
   >("generate")
 
   const formValues = React.useMemo(
-    () => toFormValues(settings.generateConfig, settings.critiqueConfig),
-    [settings.generateConfig, settings.critiqueConfig]
+    () =>
+      toFormValues(
+        settings.geminiModel,
+        settings.generateConfig,
+        settings.critiqueConfig
+      ),
+    [settings.geminiModel, settings.generateConfig, settings.critiqueConfig]
   )
-
-  React.useEffect(() => {
-    if (!saveSuccess) return
-    const id = window.setTimeout(() => setSaveSuccess(false), 2500)
-    return () => window.clearTimeout(id)
-  }, [saveSuccess])
-
-  React.useEffect(() => {
-    if (!presetNotice) return
-    const id = window.setTimeout(() => setPresetNotice(null), 3000)
-    return () => window.clearTimeout(id)
-  }, [presetNotice])
 
   const {
     control,
@@ -96,21 +116,45 @@ export default function SettingsPage() {
   const activePresets =
     activeWorkflowTab === "generate" ? GENERATE_PRESETS : CRITIQUE_PRESETS
 
+  React.useEffect(() => {
+    if (!settingsApiEnabled()) return
+    let cancelled = false
+    getMySettings()
+      .then((remote) => {
+        if (cancelled) return
+        const patch = settingsPatchFromRemote(remote, isGeminiFreeModel)
+        if (patch) updateSettings(patch)
+      })
+      .catch(() => {
+        // Keep the copy already stored on this device.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [updateSettings])
+
   const onSubmit = async (data: SettingsFormValues) => {
     clearErrors("root.serverError")
     try {
+      if (settingsApiEnabled()) {
+        // Sequential: both writes share one row, so the second must see the first insert.
+        await saveGenerateSetting(toWorkflowUpdate(data.generateConfig, data.geminiModel))
+        await saveCritiqueSetting(toWorkflowUpdate(data.critiqueConfig, data.geminiModel))
+      }
       updateSettings({
         storageMode: "default",
+        geminiModel: data.geminiModel,
         generateConfig: data.generateConfig,
         critiqueConfig: data.critiqueConfig,
       })
       resetDefaultValues(data)
-      setSaveSuccess(true)
+      toast.success("Settings saved")
     } catch {
       setError("root.serverError", {
         type: "server",
         message: "Could not save settings — please retry",
       })
+      toast.error("Could not save settings")
     }
   }
 
@@ -132,7 +176,7 @@ export default function SettingsPage() {
       setValue(`${targetKey}.contextChunks`, preset.contextChunks, {
         shouldDirty: true,
       })
-      setPresetNotice(`Applied: ${preset.name}`)
+      toast.success(`Applied ${preset.name}`)
     },
     [activeWorkflowTab, setValue]
   )
@@ -145,7 +189,7 @@ export default function SettingsPage() {
         ? DEFAULT_GENERATE_CONFIG
         : DEFAULT_CRITIQUE_CONFIG
     setValue(targetKey, defaultConf, { shouldDirty: true })
-    setPresetNotice("Reset to defaults")
+    toast.success("Reset to defaults")
   }, [activeWorkflowTab, setValue])
 
   return (
@@ -171,7 +215,7 @@ export default function SettingsPage() {
         ) : null}
 
         <Card className="rounded-[var(--radius-xl)] border-border bg-card p-4 shadow-xs sm:p-6">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-3">
               <div className="flex size-10 shrink-0 items-center justify-center rounded-[var(--radius)] bg-primary/10 text-primary">
                 <Cloud className="size-5" aria-hidden="true" />
@@ -179,11 +223,53 @@ export default function SettingsPage() {
               <div>
                 <h2 className="text-sm font-bold text-foreground">Cloud</h2>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  Notes and writing run in the cloud. No local setup.
+                  Gemini models with a free tier. No local setup.
                 </p>
               </div>
             </div>
-            <Badge variant="secondary">{activeModelDisplayName}</Badge>
+            <Controller
+              control={control}
+              name="geminiModel"
+              render={({ field, fieldState }) => (
+                <FieldGroup className="w-full sm:w-72">
+                  <Field data-invalid={fieldState.invalid || undefined}>
+                    <FieldLabel htmlFor="gemini-model">Model</FieldLabel>
+                    <Select
+                      items={GEMINI_MODEL_ITEMS}
+                      name={field.name}
+                      value={field.value}
+                      onValueChange={(value) => {
+                        if (typeof value === "string" && isGeminiFreeModel(value)) {
+                          field.onChange(value)
+                        }
+                      }}
+                    >
+                      <SelectTrigger
+                        id="gemini-model"
+                        ref={field.ref}
+                        className="w-full"
+                        aria-invalid={fieldState.invalid || undefined}
+                        onBlur={field.onBlur}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent align="start" alignItemWithTrigger={false}>
+                        <SelectGroup>
+                          {GEMINI_MODEL_ITEMS.map((item) => (
+                            <SelectItem key={item.value} value={item.value}>
+                              {item.label}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                    <FieldDescription>
+                      {getGeminiModelMeta(field.value).hint}
+                    </FieldDescription>
+                  </Field>
+                </FieldGroup>
+              )}
+            />
           </div>
         </Card>
 
@@ -254,7 +340,6 @@ export default function SettingsPage() {
               activeWorkflowTab={activeWorkflowTab}
               activePresets={activePresets}
               onApplyPreset={handleApplyPreset}
-              presetNotice={presetNotice}
             />
 
             <SystemDirectiveCard
@@ -279,13 +364,6 @@ export default function SettingsPage() {
             </p>
 
             <div className="flex w-full flex-col items-stretch gap-3 sm:w-auto sm:flex-row sm:items-center">
-              {saveSuccess ? (
-                <span className="inline-flex items-center justify-center gap-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                  <CheckCircle2 className="size-3.5" aria-hidden="true" />
-                  Saved
-                </span>
-              ) : null}
-
               <Button type="submit" disabled={isSubmitting} className="w-full sm:w-auto">
                 {isSubmitting ? (
                   <>

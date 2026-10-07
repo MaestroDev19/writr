@@ -6,6 +6,7 @@ import { SettingsProvider } from "@/contexts/settings-context"
 import { CorpusProvider } from "@/contexts/corpus-context"
 import { ProtectedRoute, PublicOnlyRoute } from "@/components/protected-route"
 import { NavigationHeader } from "@/components/app-nav"
+import { Toaster } from "@/components/ui/sonner"
 
 import LoginPage from "@/pages/LoginPage"
 import SignupPage from "@/pages/SignupPage"
@@ -104,6 +105,7 @@ export function App() {
           <CorpusProvider>
             <BrowserRouter>
               <AppContent />
+              <Toaster />
             </BrowserRouter>
           </CorpusProvider>
         </SettingsProvider>
