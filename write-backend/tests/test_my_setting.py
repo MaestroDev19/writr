@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
 from router.v1.mySetting import MySettingRouter
-from services.supabase import get_async_user_supabase, get_current_user_id
+from services.supabase import get_async_service_supabase, get_current_user_id
 
 USER_ID = "user-1"
 
@@ -74,10 +74,10 @@ async def client(store: FakeSupabase) -> AsyncIterator[AsyncClient]:
     app.include_router(MySettingRouter)
     app.dependency_overrides[get_current_user_id] = lambda: USER_ID
 
-    async def override_db() -> AsyncIterator[FakeSupabase]:
-        yield store
+    async def override_db() -> FakeSupabase:
+        return store
 
-    app.dependency_overrides[get_async_user_supabase] = override_db
+    app.dependency_overrides[get_async_service_supabase] = override_db
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as http:
         yield http

@@ -4,8 +4,9 @@
 ``POST /mySetting/generate`` writes Write settings.
 ``POST /mySetting/critique`` writes Review settings.
 
-The caller's JWT is forwarded so Row Level Security applies. ``user_id`` is
-taken from that token, never from the body.
+``user_id`` comes from the verified JWT, never from the body. Writes use the
+service client, same as the other routes: a per-request user client sends the
+access token as the API key and PostgREST rejects it.
 """
 
 from __future__ import annotations
@@ -24,7 +25,7 @@ from core.user_settings import (
     settings_columns,
     workflow_column,
 )
-from services.supabase import AsyncUserSupabaseDep, CurrentUserIdDep
+from services.supabase import AsyncServiceSupabaseDep, CurrentUserIdDep
 from utils.log import bind, scrub
 
 MySettingRouter = APIRouter(prefix="/mySetting", tags=["mySetting"])
@@ -106,7 +107,7 @@ def _payload(workflow: WorkflowName, body: WorkflowSettingUpdate) -> dict[str, A
 
 
 async def _upsert(
-    supabase: AsyncUserSupabaseDep,
+    supabase: AsyncServiceSupabaseDep,
     user_id: str,
     payload: dict[str, Any],
 ) -> dict[str, Any]:
@@ -156,7 +157,7 @@ async def _save_workflow(
     workflow: WorkflowName,
     body: WorkflowSettingUpdate,
     user_id: str,
-    supabase: AsyncUserSupabaseDep,
+    supabase: AsyncServiceSupabaseDep,
 ) -> WorkflowSettingOut:
     bind(operation=f"update_my_setting_{workflow}", user_id=user_id)
     payload = _payload(workflow, body)
@@ -174,7 +175,7 @@ async def _save_workflow(
 @MySettingRouter.get("/", response_model=MySettings)
 async def get_my_setting(
     user_id: CurrentUserIdDep,
-    supabase: AsyncUserSupabaseDep,
+    supabase: AsyncServiceSupabaseDep,
 ) -> MySettings:
     """Return this user's settings. Missing row yields empty fields, not an insert."""
     bind(operation="get_my_setting", user_id=user_id)
@@ -214,7 +215,7 @@ async def get_my_setting(
 async def update_generate_setting(
     body: WorkflowSettingUpdate,
     user_id: CurrentUserIdDep,
-    supabase: AsyncUserSupabaseDep,
+    supabase: AsyncServiceSupabaseDep,
 ) -> WorkflowSettingOut:
     """Upsert Write settings. Omitted fields on an existing row are left as-is."""
     return await _save_workflow("generate", body, user_id, supabase)
@@ -228,7 +229,7 @@ async def update_generate_setting(
 async def update_critique_setting(
     body: WorkflowSettingUpdate,
     user_id: CurrentUserIdDep,
-    supabase: AsyncUserSupabaseDep,
+    supabase: AsyncServiceSupabaseDep,
 ) -> WorkflowSettingOut:
     """Upsert Review settings. Omitted fields on an existing row are left as-is."""
     return await _save_workflow("critique", body, user_id, supabase)
