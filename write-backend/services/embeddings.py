@@ -3,13 +3,8 @@
 Turns text into dense float vectors for storage in a vector index
 (e.g. Supabase pgvector) and similarity search.
 
-Providers:
-  - Gemini — caller's key when provided; otherwise the app default
-    (``GEMINI_API_KEY``). This is the Writr-hosted embedder.
-  - OpenAI — caller's key only (no app default)
-
-The worker uses the process-wide Gemini app-default client.
-Per-request keys go through ``create_embedding_service``.
+Writr hosts Gemini embeddings with ``GEMINI_API_KEY``.
+The worker uses the process-wide client.
 
 Public embed methods are async so FastAPI routes never block the event loop.
 """
@@ -20,14 +15,13 @@ import uuid
 from functools import lru_cache
 from typing import Annotated, Literal, Protocol, runtime_checkable
 
-from fastapi import Depends, Header
+from fastapi import Depends
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from langchain_openai import OpenAIEmbeddings
 
 from core.config import SettingsDep, get_settings
 from utils.log import bind, note, scrub
 
-EmbeddingProvider = Literal["gemini", "openai"]
+EmbeddingProvider = Literal["gemini"]
 
 
 def _normalize_api_key(api_key: str | None) -> str | None:
@@ -160,11 +154,7 @@ class EmbeddingService:
 
 
 class GeminiEmbeddingService(EmbeddingService):
-    """Gemini-backed EmbeddingService.
-
-    Pass the caller's ``api_key`` to override, otherwise use
-    ``GEMINI_API_KEY`` from Settings (Writr-hosted default). A caller key
-    always wins when present.
+    """Gemini embeddings using the app ``GEMINI_API_KEY``.
 
     Model and output dimensions come from Settings unless overridden.
     ``output_dimensionality`` must match the vector column size in the DB
@@ -173,43 +163,22 @@ class GeminiEmbeddingService(EmbeddingService):
 
     def __init__(
         self,
-        api_key: str | None = None,
         model: str | None = None,
         dimensions: int | None = None,
-        *,
-        use_app_default: bool = True,
     ) -> None:
         settings = get_settings()
-        user_key = _normalize_api_key(api_key)
-        if user_key:
-            resolved_key = user_key
-        elif use_app_default:
-            resolved_key = _normalize_api_key(settings.gemini_api_key)
-            if not resolved_key:
-                note(
-                    operation="embedding_client_init",
-                    embedding_client_id=str(uuid.uuid4()),
-                    embedding_provider="gemini",
-                    error_type="EmbeddingError",
-                    error_message="App default Gemini API key is not configured.",
-                    outcome="error",
-                )
-                raise EmbeddingError(
-                    "App default Gemini API key is not configured. "
-                    "Set GEMINI_API_KEY or pass your own key."
-                )
-        else:
+        resolved_key = _normalize_api_key(settings.gemini_api_key)
+        if not resolved_key:
             note(
                 operation="embedding_client_init",
                 embedding_client_id=str(uuid.uuid4()),
                 embedding_provider="gemini",
                 error_type="EmbeddingError",
-                error_message="Gemini embedding request is missing a user API key.",
+                error_message="App default Gemini API key is not configured.",
                 outcome="error",
             )
             raise EmbeddingError(
-                "A Gemini API key is required. Pass your own key, "
-                "or leave use_app_default=True to use the app key."
+                "App default Gemini API key is not configured. Set GEMINI_API_KEY."
             )
 
         target_model = model or settings.gemini_embedding_model
@@ -242,127 +211,14 @@ class GeminiEmbeddingService(EmbeddingService):
         )
 
 
-class OpenAIEmbeddingService(EmbeddingService):
-    """OpenAI-backed EmbeddingService (e.g. text-embedding-3-small).
-
-    Requires the caller's own OpenAI key — there is no app default.
-
-    ``dimensions`` must match the vector column size in the DB (same rule
-    as Gemini: both providers write vectors of ``settings.embedding_dim``).
-    """
-
-    def __init__(
-        self,
-        api_key: str,
-        model: str | None = None,
-        dimensions: int | None = None,
-    ) -> None:
-        user_key = _normalize_api_key(api_key)
-        if not user_key:
-            note(
-                operation="embedding_client_init",
-                embedding_client_id=str(uuid.uuid4()),
-                embedding_provider="openai",
-                error_type="EmbeddingError",
-                error_message="OpenAI embedding request is missing a user API key.",
-                outcome="error",
-            )
-            raise EmbeddingError("OpenAI embeddings require your own API key.")
-
-        settings = get_settings()
-        target_model = model or settings.openai_embedding_model
-        dim = dimensions or settings.embedding_dim
-
-        try:
-            client = OpenAIEmbeddings(
-                model=target_model,
-                api_key=user_key,
-                dimensions=dim,
-            )
-        except Exception as e:
-            note(
-                operation="embedding_client_init",
-                embedding_client_id=str(uuid.uuid4()),
-                embedding_provider="openai",
-                model_name=target_model,
-                embedding_dim=dim,
-                error_type=type(e).__name__,
-                error_message=scrub(str(e)),
-                outcome="error",
-            )
-            raise EmbeddingError(f"Could not initialize OpenAIEmbeddingService: {e}") from e
-
-        super().__init__(
-            client=client,
-            model_name=target_model,
-            embedding_provider="openai",
-            embedding_dim=dim,
-        )
-
-
-# ---------------------------------------------------------------------------
-# Factories + FastAPI dependencies
-# ---------------------------------------------------------------------------
-
 @lru_cache(maxsize=1)
-def _app_default_gemini_embedding_service() -> GeminiEmbeddingService:
-    """Cached app-default Gemini client (one instance process-wide)."""
-    return GeminiEmbeddingService(use_app_default=True)
-
-
-def get_gemini_embedding_service(api_key: str | None = None) -> GeminiEmbeddingService:
-    """Gemini for a user key, or the cached app-default when the key is omitted."""
-    if _normalize_api_key(api_key):
-        return GeminiEmbeddingService(api_key=api_key)
-    return _app_default_gemini_embedding_service()
-
-
-def get_openai_embedding_service(api_key: str) -> OpenAIEmbeddingService:
-    """OpenAI for the caller's key. Not cached — keys differ per caller."""
-    return OpenAIEmbeddingService(api_key=api_key)
-
-
-def create_embedding_service(
-    provider: EmbeddingProvider = "gemini",
-    api_key: str | None = None,
-    *,
-    use_app_default: bool = True,
-    model: str | None = None,
-    dimensions: int | None = None,
-) -> EmbeddingService:
-    """Build an embedding client for one caller.
-
-    Default provider is Gemini. ``api_key`` is the caller's own key and wins
-    over the app default. With no caller key, Gemini uses ``GEMINI_API_KEY``.
-    ``use_app_default`` is valid for Gemini only.
-    """
-    if provider == "gemini":
-        return GeminiEmbeddingService(
-            api_key=api_key,
-            model=model,
-            dimensions=dimensions,
-            use_app_default=use_app_default,
-        )
-    if provider == "openai":
-        if use_app_default and not _normalize_api_key(api_key):
-            raise EmbeddingError(
-                "The app default embedding key is available for Gemini only. "
-                "Pass your own OpenAI API key."
-            )
-        return OpenAIEmbeddingService(
-            api_key=api_key or "",
-            model=model,
-            dimensions=dimensions,
-        )
-    raise EmbeddingError(f"Unsupported embedding provider '{provider}'.")
+def get_gemini_embedding_service() -> GeminiEmbeddingService:
+    """Cached app Gemini embedding client (one instance process-wide)."""
+    return GeminiEmbeddingService()
 
 
 def get_embedding_service(settings: SettingsDep) -> EmbeddingService:
-    """Shared Gemini client using the app's ``GEMINI_API_KEY``.
-
-    Per-caller keys belong in ``create_embedding_service``. OpenAI is not
-    selected here because it always needs the caller's own key.
-    """
+    """Shared Gemini client using the app's ``GEMINI_API_KEY``."""
     if not _normalize_api_key(settings.gemini_api_key):
         note(
             operation="embedding_client_init",
@@ -378,28 +234,8 @@ def get_embedding_service(settings: SettingsDep) -> EmbeddingService:
     return get_gemini_embedding_service()
 
 
-def _gemini_embedding_service_from_request(
-    api_key: Annotated[str | None, Header(alias="X-Gemini-Api-Key")] = None,
-) -> GeminiEmbeddingService:
-    """Route dependency: ``X-Gemini-Api-Key`` when present, else app default."""
-    return get_gemini_embedding_service(api_key)
-
-
-def _openai_embedding_service_from_request(
-    api_key: Annotated[str, Header(alias="X-OpenAI-Api-Key")],
-) -> OpenAIEmbeddingService:
-    """Route dependency: caller's OpenAI key from ``X-OpenAI-Api-Key``."""
-    return get_openai_embedding_service(api_key)
-
-
-# Convenience aliases for route signatures: ``service: EmbeddingServiceDep``.
 EmbeddingServiceDep = Annotated[EmbeddingService, Depends(get_embedding_service)]
-GeminiEmbeddingServiceDep = Annotated[
-    GeminiEmbeddingService, Depends(_gemini_embedding_service_from_request)
-]
-OpenAIEmbeddingServiceDep = Annotated[
-    OpenAIEmbeddingService, Depends(_openai_embedding_service_from_request)
-]
+GeminiEmbeddingServiceDep = EmbeddingServiceDep
 
 
 async def embed_query(text: str) -> list[float]:

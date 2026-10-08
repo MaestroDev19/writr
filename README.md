@@ -15,7 +15,7 @@ Writing companion for authors. Sign in with Supabase, keep your lore in a notes 
 - [Node.js 20+](https://nodejs.org/) or [Bun](https://bun.sh/)
 - [uv](https://docs.astral.sh/uv/) and Python 3.14+
 - A [Supabase](https://supabase.com/) project with [`docs/supabase-schema.sql`](docs/supabase-schema.sql) applied (enable **pgvector** first)
-- At least one provider key (Gemini, OpenAI, Groq, or OpenRouter) for live inference
+- A Gemini API key (`GEMINI_API_KEY`) for live inference and embeddings
 
 ### 1. Supabase
 
@@ -127,12 +127,13 @@ SUPABASE_SECRET_KEY=your-secret-key
 CRON_SECRET=generate-a-long-random-string
 
 GEMINI_API_KEY=
-OPENAI_API_KEY=
-OPENROUTER_API_KEY=
-GROQ_API_KEY=
+# Optional overrides. Defaults: gemini-3.8-flash, gemini-embedding-2, 768.
+# MODEL_NAME=gemini-3.8-flash
+# GEMINI_EMBEDDING_MODEL=gemini-embedding-2
+# EMBEDDING_DIM=768
 ```
 
-Legacy `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` still work. Provider keys are optional at startup; a call fails only when its key is missing. Gemini embeddings are preferred when `GEMINI_API_KEY` is set; OpenAI is the fallback. Keep `EMBEDDING_DIM` (default `768`) aligned with the `pgvector` column.
+Legacy `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` still work. Chat and embeddings use `GEMINI_API_KEY`. The app starts without it; the first model call fails until it is set. Keep `EMBEDDING_DIM` (default `768`) aligned with the `pgvector` column.
 
 ### Background job drain (Supabase Cron)
 

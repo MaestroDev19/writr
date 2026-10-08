@@ -40,18 +40,10 @@ const DEFAULT_SETTINGS: AppSettings = {
   critiqueConfig: DEFAULT_CRITIQUE_CONFIG,
 }
 
-const HOSTED_PROVIDERS: ModelProvider[] = ["gemini", "groq", "openai", "openrouter"]
-
 function sanitizeStoredSettings(raw: Record<string, unknown>): AppSettings {
-  const parsedProvider = raw.modelProvider as string | undefined
-  const modelProvider: ModelProvider =
-    parsedProvider === "ollama" || !HOSTED_PROVIDERS.includes(parsedProvider as ModelProvider)
-      ? "gemini"
-      : (parsedProvider as ModelProvider)
-
   return {
     storageMode: "default",
-    modelProvider,
+    modelProvider: "gemini",
     geminiModel:
       typeof raw.geminiModel === "string" && isGeminiFreeModel(raw.geminiModel)
         ? raw.geminiModel

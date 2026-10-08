@@ -121,10 +121,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Avatar upload is best-effort — signup still succeeds if storage fails.
   const uploadAvatar = useCallback(
     async (userId: string, file: File): Promise<string | null> => {
-      try {
-        const fileExt = file.name.split(".").pop() || "png"
-        const filePath = `${userId}/${Date.now()}.${fileExt}`
+      const fileExt = file.name.split(".").pop() || "png"
+      const filePath = `${userId}/${Date.now()}.${fileExt}`
 
+      try {
         const { error: uploadError } = await supabase.storage
           .from("avatars")
           .upload(filePath, file, {

@@ -1,7 +1,7 @@
 import type { GeminiModelId } from "@/lib/model-providers"
 
 export type StorageMode = "default"
-export type ModelProvider = "gemini" | "groq" | "openai" | "openrouter"
+export type ModelProvider = "gemini"
 
 export interface WorkflowPromptConfig {
   systemPrompt: string
@@ -12,7 +12,7 @@ export interface WorkflowPromptConfig {
   contextChunks: number
 }
 
-/** Client-side settings only. API keys and embedding models live on the backend. */
+/** Client-side settings. Chat and embeddings use the hosted Gemini key. */
 export interface AppSettings {
   storageMode: StorageMode
   modelProvider: ModelProvider

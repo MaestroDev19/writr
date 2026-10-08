@@ -58,12 +58,8 @@ class Settings(BaseSettings):
     # Legacy service_role JWT — still accepted via supabase_admin_key property.
     supabase_service_role_key: str | None = None
 
-    # --- LLM / embedding provider API keys ---
-    # Hosted Gemini is the only app default; other keys are optional integrations.
+    # Writr-hosted Gemini.
     gemini_api_key: str | None = None
-    openai_api_key: str | None = None
-    openrouter_api_key: str | None = None
-    groq_api_key: str | None = None
 
     # --- chat defaults (null user_settings columns fall back to these) ---
     # Write uses generate_* columns; Review uses critique_* columns.
@@ -77,7 +73,6 @@ class Settings(BaseSettings):
 
     # --- embedding model defaults ---
     gemini_embedding_model: str = "gemini-embedding-2"
-    openai_embedding_model: str = "text-embedding-3-small"
     # Must match the vector column size in the database (pgvector).
     embedding_dim: int = 768
 
@@ -96,11 +91,6 @@ class Settings(BaseSettings):
     def supabase_admin_key(self) -> str | None:
         """Backend-only key: prefer secret, fall back to legacy service_role."""
         return self.supabase_secret_key or self.supabase_service_role_key
-
-    @property
-    def gemini_chat_model(self) -> str:
-        """Alias kept for older call sites (``services.llm``)."""
-        return self.model_name
 
 
 @lru_cache(maxsize=1)
