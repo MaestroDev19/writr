@@ -96,7 +96,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # Open CORS for local/dev frontends; tighten allow_origins in production.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["http://localhost:5173","https://writr-d5j9.vercel.app"],
     allow_credentials=True,
     allow_methods=["POST", "GET", "OPTIONS", "PUT", "DELETE", "PATCH"],
     allow_headers=["*"],
