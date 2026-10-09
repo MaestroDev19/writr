@@ -3,7 +3,6 @@ import { z } from "zod"
 export interface UserProfile {
   id: string
   author_name: string | null
-  email: string | null
   avatar_url: string | null
   updated_at: string | null
 }

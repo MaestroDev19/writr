@@ -55,7 +55,7 @@ export function NavigationHeader() {
   const isActive = (path: string) => location.pathname === path
 
   const displayName = profile?.author_name || user?.user_metadata?.author_name || "Author"
-  const email = profile?.email || user?.email || ""
+  const email = user?.email || ""
   const avatarUrl = profile?.avatar_url || user?.user_metadata?.avatar_url || ""
   const initials = getInitials(displayName, email)
 
