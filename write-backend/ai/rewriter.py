@@ -7,11 +7,10 @@ query only.
 
 from __future__ import annotations
 
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage
 from langgraph.graph import MessagesState
 
 from ai.model import build_default_model
-from ai.prompts.system import REWRITER_SYSTEM_PROMPT
 from ai.prompts.user import QUERY_REWRITER_USER_PROMPT
 
 rewriter_model = build_default_model()
