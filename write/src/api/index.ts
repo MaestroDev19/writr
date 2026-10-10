@@ -16,6 +16,7 @@ import {
   saveGenerateSetting,
   type WorkflowSettingUpdate,
 } from "./endpoints/setting"
+import { critiqueAgent, writeAgent } from "./endpoints/agents"
 
 /** Spread into `useQuery({ ...queryApiHelper(...) })`. */
 export function queryApiHelper<T>(
@@ -91,6 +92,17 @@ export const saveGenerateSettingMutation = mutationApiHelper(
 export const saveCritiqueSettingMutation = mutationApiHelper(
   ["mySetting", "critique"],
   (setting: WorkflowSettingUpdate) => saveCritiqueSetting(setting)
+)
+
+
+export const writeAgentMutation = mutationApiHelper(
+  ["agents", "write"],
+  (content: string) => writeAgent(content)
+)
+
+export const critiqueAgentMutation = mutationApiHelper(
+  ["agents", "critique"],
+  (content: string) => critiqueAgent(content)
 )
 export {
   MAX_DOCUMENTS_PER_UPLOAD,

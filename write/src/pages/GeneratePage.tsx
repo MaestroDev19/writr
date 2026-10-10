@@ -1,8 +1,15 @@
 import * as React from "react"
 import { Link } from "react-router-dom"
-import { useForm, useWatch, type Control, type UseFormSetValue } from "react-hook-form"
+import { useMutation } from "@tanstack/react-query"
+import {
+  useForm,
+  useWatch,
+  type Control,
+  type UseFormSetValue,
+} from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
+import { toast } from "sonner"
 import {
   Sparkles,
   ArrowRight,
@@ -34,50 +41,90 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import {
+  Field,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field"
 
-import type {
-  TargetDocumentItem,
-  GenerateRevisionsResponse,
-} from "@/types/document-roles"
+import type { GenerateRevisionsResponse } from "@/types/document-roles"
 import {
   UploadConfirmDialog,
   type PendingUpload,
 } from "@/components/upload-confirm-dialog"
-import { generateRevisionsApi } from "@/lib/api-client"
+import { writeAgentMutation } from "@/api"
+import { MAX_AGENT_CONTENT_CHARS, MAX_TARGET_DRAFT_BYTES } from "@/api/limits"
+import { getApiErrorMessage } from "@/lib/axios"
+import { agentContentTooLong } from "@/lib/agent-content"
+import {
+  assertTargetDraftFile,
+  fileHandler,
+  TARGET_FILE_ACCEPT,
+  TARGET_FILE_TYPES_LABEL,
+} from "@/lib/file_handler"
+import { writePromptBuilder } from "@/lib/user_prompt_builder"
 import { formatFileSize } from "@/lib/format-file-size"
 import { getCreativityLabel } from "@/lib/creativity-label"
 
 const PROMPT_SUGGESTIONS = [
-  "Deepen character feelings",
-  "Add sensory detail",
+  "Tighten this scene",
+  "Clarify this outline",
+  "Expand this character sheet",
   "Sharpen dialogue",
-  "Tighten pacing",
-  "Match my notes and lore",
-]
+  "Match my notes",
+] as const
 
-const generateFormSchema = z.object({
-  prompt: z.string().trim().min(1, "Add instructions first"),
+const targetDraftSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  size: z.string().min(1),
+  text: z.string(),
+  wordCount: z.number().optional(),
+  characterCount: z.number().optional(),
+  status: z.enum(["ready", "loading", "error"]),
 })
 
+const generateFormSchema = z
+  .object({
+    prompt: z.string().trim().min(1, "Add instructions first"),
+    target: targetDraftSchema.nullable(),
+  })
+  .superRefine((value, ctx) => {
+    const target = value.target
+    if (!target || target.status !== "ready" || !target.text.trim()) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["target"],
+        message: "Add a book file first",
+      })
+    }
+  })
+
 type GenerateFormValues = z.infer<typeof generateFormSchema>
+type TargetDraftValue = z.infer<typeof targetDraftSchema>
 
 function PromptField({
   control,
   register,
   setValue,
   disabled,
+  error,
 }: {
   control: Control<GenerateFormValues>
   register: ReturnType<typeof useForm<GenerateFormValues>>["register"]
   setValue: UseFormSetValue<GenerateFormValues>
   disabled: boolean
+  error?: string
 }) {
   const prompt = useWatch({ control, name: "prompt" }) ?? ""
 
   return (
-    <>
-      <div className="flex flex-col gap-2">
-        <span className="text-xs font-semibold text-foreground">Quick picks</span>
+    <FieldGroup className="gap-5">
+      <Field>
+        <FieldLabel className="text-xs font-semibold normal-case tracking-normal">
+          Quick picks
+        </FieldLabel>
         <div className="flex flex-wrap gap-2">
           {PROMPT_SUGGESTIONS.map((chip) => (
             <button
@@ -97,13 +144,16 @@ function PromptField({
             </button>
           ))}
         </div>
-      </div>
+      </Field>
 
-      <div className="flex flex-col gap-1.5">
+      <Field data-invalid={Boolean(error) || undefined}>
         <div className="flex items-center justify-between gap-2">
-          <label htmlFor="revision-prompt" className="text-xs font-semibold text-foreground">
+          <FieldLabel
+            htmlFor="revision-prompt"
+            className="text-xs font-semibold normal-case tracking-normal"
+          >
             Your instructions
-          </label>
+          </FieldLabel>
           <span className="text-[11px] text-muted-foreground tabular-nums">
             {prompt.length}
           </span>
@@ -113,13 +163,89 @@ function PromptField({
           id="revision-prompt"
           rows={3}
           disabled={disabled}
-          placeholder="e.g. Build tension between Elena and Marcus…"
+          placeholder="e.g. Tighten this scene, clarify the outline, or expand this character sheet…"
           autoComplete="off"
+          aria-invalid={Boolean(error) || undefined}
           className="w-full resize-y rounded-[var(--radius)] border border-border bg-background p-3 text-sm leading-relaxed outline-hidden transition-[border-color,box-shadow] focus:border-primary focus:ring-2 focus:ring-primary/30 disabled:opacity-60"
           {...register("prompt")}
         />
+        <FieldError>{error}</FieldError>
+      </Field>
+    </FieldGroup>
+  )
+}
+
+function GenerateActions({
+  control,
+  target,
+  busy,
+  onClear,
+}: {
+  control: Control<GenerateFormValues>
+  target: TargetDraftValue | null
+  busy: boolean
+  onClear: () => void
+}) {
+  const prompt = useWatch({ control, name: "prompt" }) ?? ""
+  const contentTooLong = React.useMemo(() => {
+    const instruction = prompt.trim()
+    const draft = target?.text.trim() ?? ""
+    if (!instruction || !draft || target?.status !== "ready") return false
+    try {
+      return agentContentTooLong(
+        writePromptBuilder({ userInput: instruction, fileContent: draft })
+      )
+    } catch {
+      return false
+    }
+  }, [prompt, target?.status, target?.text])
+
+  const canGenerate =
+    target?.status === "ready" && Boolean(target.text.trim()) && !contentTooLong && !busy
+
+  return (
+    <div className="flex flex-col-reverse items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <Button
+        type="button"
+        onClick={onClear}
+        variant="ghost"
+        size="sm"
+        className="w-full sm:w-auto"
+        disabled={busy}
+      >
+        <RotateCcw data-icon="inline-start" />
+        Clear
+      </Button>
+
+      <div className="flex w-full flex-col items-stretch gap-2 sm:w-auto sm:flex-row sm:items-center">
+        {target?.status === "ready" && contentTooLong ? (
+          <span className="inline-flex items-center justify-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 sm:justify-start">
+            <AlertCircle className="size-3.5 shrink-0" aria-hidden="true" />
+            File and instructions must stay under{" "}
+            {MAX_AGENT_CONTENT_CHARS.toLocaleString()} characters.
+          </span>
+        ) : !target ? (
+          <span className="inline-flex items-center justify-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 sm:justify-start">
+            <AlertCircle className="size-3.5 shrink-0" aria-hidden="true" />
+            Add a book file first
+          </span>
+        ) : null}
+
+        <Button type="submit" disabled={!canGenerate} className="w-full sm:w-auto">
+          {busy ? (
+            <>
+              <RefreshCw data-icon="inline-start" className="animate-spin" />
+                      Revising…
+            </>
+          ) : (
+            <>
+              <Wand2 data-icon="inline-start" />
+              Revise file
+            </>
+          )}
+        </Button>
       </div>
-    </>
+    </div>
   )
 }
 
@@ -130,9 +256,9 @@ export default function GeneratePage() {
   const config = settings.generateConfig || DEFAULT_GENERATE_CONFIG
   const creativity = getCreativityLabel(config.temperature)
 
-  // Target draft stays local in Generate. Not added to the notes library.
-  const [targetDraft, setTargetDraft] = React.useState<TargetDocumentItem | null>(null)
+  // Target draft is extracted text + metadata in RHF (session only — not notes library).
   const targetFileInputRef = React.useRef<HTMLInputElement>(null)
+  const extractGeneration = React.useRef(0)
   const [isTargetDragging, setIsTargetDragging] = React.useState(false)
 
   const [pendingUpload, setPendingUpload] = React.useState<PendingUpload | null>(null)
@@ -140,6 +266,8 @@ export default function GeneratePage() {
 
   const [outputResult, setOutputResult] = React.useState<GenerateRevisionsResponse | null>(null)
   const [copied, setCopied] = React.useState(false)
+
+  const writeMutation = useMutation({ ...writeAgentMutation })
 
   const {
     register,
@@ -154,10 +282,13 @@ export default function GeneratePage() {
     resolver: zodResolver(generateFormSchema),
     defaultValues: {
       prompt: PROMPT_SUGGESTIONS[0],
+      target: null,
     },
+    mode: "onSubmit",
   })
 
-  const canGenerate = Boolean(targetDraft) && !isSubmitting
+  const targetDraft = useWatch({ control, name: "target" })
+  const busy = isSubmitting || writeMutation.isPending
 
   React.useEffect(() => {
     if (!copied) return
@@ -165,10 +296,22 @@ export default function GeneratePage() {
     return () => window.clearTimeout(id)
   }, [copied])
 
+  const setTarget = (next: TargetDraftValue | null) => {
+    setValue("target", next, { shouldDirty: true, shouldValidate: true })
+    if (next?.status === "ready") clearErrors("target")
+  }
+
   const handleTargetFilesSelected = (files: File[]) => {
-    if (files.length === 0) return
+    const file = files[0]
+    if (!file) return
+    try {
+      assertTargetDraftFile(file)
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, "Could not use that file."))
+      return
+    }
     setPendingUpload({
-      files: [files[0]],
+      files: [file],
       designatedRole: "target",
       mode: "generate-target",
       currentActiveTargetName: targetDraft?.name,
@@ -180,73 +323,76 @@ export default function GeneratePage() {
     const file = confirmedFiles[0]
     if (!file) return
 
-    let text = ""
-    let wordCount: number
-    let characterCount: number
+    const generation = ++extractGeneration.current
+    const id = `target-${generation}`
+    const name = file.name
+    const size = formatFileSize(file.size)
+    setTarget({
+      id,
+      name,
+      size,
+      text: "",
+      status: "loading",
+    })
 
     try {
-      text = await file.text()
-      wordCount = text.trim().split(/\s+/).filter(Boolean).length
-      characterCount = text.length
-    } catch {
-      wordCount = Math.round(file.size / 6)
-      characterCount = file.size
+      const text = await fileHandler(file)
+      if (generation !== extractGeneration.current) return
+      const wordCount = text.split(/\s+/).filter(Boolean).length
+      setTarget({
+        id,
+        name,
+        size,
+        text,
+        wordCount,
+        characterCount: text.length,
+        status: "ready",
+      })
+    } catch (err) {
+      if (generation !== extractGeneration.current) return
+      setTarget(null)
+      toast.error(
+        getApiErrorMessage(err, "Could not read that file. Use a .txt, .md, or .docx file.")
+      )
     }
-
-    setTargetDraft({
-      id: `target-${Date.now()}`,
-      file,
-      text,
-      name: file.name,
-      size: formatFileSize(file.size),
-      role: "target",
-      wordCount,
-      characterCount,
-      uploadedAt: new Date(),
-      status: "ready",
-    })
   }
 
   const handleRemoveTarget = () => {
-    setTargetDraft(null)
+    extractGeneration.current += 1
+    setTarget(null)
   }
 
   const onSubmit = async (data: GenerateFormValues) => {
-    if (!targetDraft) {
-      setError("root.serverError", {
-        type: "validation",
-        message: "Add a story file first",
-      })
-      return
-    }
+    const target = data.target
+    if (!target?.text.trim()) return
 
     clearErrors("root.serverError")
+    clearErrors("target")
+    const started = performance.now()
 
     try {
-      const response = await generateRevisionsApi(
-        {
-          target_file_id: targetDraft.id,
-          prompt: data.prompt.trim(),
-          temperature: config.temperature,
-          max_tokens: config.maxTokens,
-        },
-        {
-          targetFileName: targetDraft.name,
-          referenceFileNames: referenceDocuments.map((rf) => rf.name),
-          targetText: targetDraft.text,
-          targetFile: targetDraft.file,
-          systemPrompt: config.systemPrompt,
-          topP: config.topP,
-          frequencyPenalty: config.frequencyPenalty,
-          contextChunks: config.contextChunks,
-        }
-      )
+      const content = writePromptBuilder({
+        userInput: data.prompt,
+        fileContent: target.text,
+      })
+      const { response } = await writeMutation.mutateAsync(content)
+      const revised = response.trim()
+      const wordCount = revised ? revised.split(/\s+/).filter(Boolean).length : 0
 
-      setOutputResult(response)
-    } catch {
+      setOutputResult({
+        target_file_id: target.id,
+        target_filename: target.name,
+        revised_text: revised,
+        word_count: wordCount,
+        character_count: revised.length,
+        tokens: 0,
+        latency_ms: Math.round(performance.now() - started),
+        referenced_documents: referenceDocuments.map((rf) => rf.name),
+      })
+    } catch (err) {
       setError("root.serverError", {
         type: "server",
-        message: "Rewrite failed — please retry",
+        message: getApiErrorMessage(err, "Revision failed — please retry"),
       })
     }
   }
@@ -274,18 +420,18 @@ export default function GeneratePage() {
     <div className="mx-auto flex max-w-5xl flex-col gap-8 px-4 py-8 sm:px-6 sm:py-10">
       <header className="flex flex-col gap-2">
         <h1 className="text-balance text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-          Improve your story
+          Work on a book file
         </h1>
         <p className="max-w-2xl text-pretty text-sm text-muted-foreground leading-relaxed">
-          Open a chapter, say what to change, and Writr rewrites it using your notes from Home.
+          Open a scene, outline, character sheet, script, or other book file. Say what to change, and Writr revises it using your notes.
         </p>
       </header>
 
       <section
-        aria-label="Your story and notes"
+        aria-label="Your book file and notes"
         className="grid gap-4 md:gap-5 lg:grid-cols-2"
       >
-        {/* Your story (local draft only) */}
+        {/* Session book file (not the notes library) */}
         <div className="flex flex-col gap-4 rounded-[var(--radius-xl)] border border-border bg-card p-4 shadow-xs sm:p-5">
           <div className="flex flex-col gap-3 border-b border-border pb-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex min-w-0 items-start gap-3">
@@ -294,11 +440,11 @@ export default function GeneratePage() {
               </div>
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-sm font-bold text-foreground">Your story</h2>
+                  <h2 className="text-sm font-bold text-foreground">Your file</h2>
                   <Badge variant="secondary">This session only</Badge>
                 </div>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  The chapter or scene you want to rewrite.
+                  A scene, outline, character sheet, script, or other book document.
                 </p>
               </div>
             </div>
@@ -321,8 +467,8 @@ export default function GeneratePage() {
             type="file"
             ref={targetFileInputRef}
             className="hidden"
-            accept=".md,.txt,.docx,.pdf,.epub"
-            aria-label="Choose story file"
+            accept={TARGET_FILE_ACCEPT}
+            aria-label="Choose a book file"
             onChange={(e) => {
               if (e.target.files && e.target.files.length > 0) {
                 handleTargetFilesSelected(Array.from(e.target.files))
@@ -359,22 +505,39 @@ export default function GeneratePage() {
                   variant="ghost"
                   size="icon-sm"
                   onClick={handleRemoveTarget}
-                  aria-label="Remove story file"
+                  aria-label="Remove file"
                 >
                   <Trash2 />
                 </Button>
               </div>
 
-              <div className="flex items-center gap-1.5 border-t border-primary/15 pt-3 text-xs text-emerald-700 dark:text-emerald-400">
-                <FileCheck className="size-3.5 shrink-0" aria-hidden="true" />
-                <span>Ready to rewrite</span>
+              <div
+                className={`flex items-center gap-1.5 border-t border-primary/15 pt-3 text-xs ${
+                  targetDraft.status === "loading"
+                    ? "text-muted-foreground"
+                    : "text-emerald-700 dark:text-emerald-400"
+                }`}
+                role="status"
+                aria-live="polite"
+              >
+                {targetDraft.status === "loading" ? (
+                  <>
+                    <RefreshCw className="size-3.5 shrink-0 animate-spin" aria-hidden="true" />
+                    <span>Reading file…</span>
+                  </>
+                ) : (
+                  <>
+                    <FileCheck className="size-3.5 shrink-0" aria-hidden="true" />
+                    <span>Ready to revise</span>
+                  </>
+                )}
               </div>
             </div>
           ) : (
             <div
               role="button"
               tabIndex={0}
-              aria-label="Add your story file"
+              aria-label="Add a book file"
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault()
@@ -405,10 +568,11 @@ export default function GeneratePage() {
               </div>
               <div className="flex flex-col gap-1">
                 <p className="text-sm font-semibold text-foreground">
-                  Add your story file
+                  Add a book file
                 </p>
                 <p className="max-w-xs text-xs text-muted-foreground">
-                  Markdown, Word, text, or PDF. On phones, use Choose file.
+                  {TARGET_FILE_TYPES_LABEL}. Up to {formatFileSize(MAX_TARGET_DRAFT_BYTES)}. On
+                  phones, use Choose file.
                 </p>
               </div>
               <Button
@@ -565,14 +729,14 @@ export default function GeneratePage() {
             className="flex flex-col gap-5"
             noValidate
           >
-            {(errors.root?.serverError || errors.prompt) && (
+            {(errors.root?.serverError || errors.target) && (
               <div
                 role="alert"
                 className="flex items-start gap-2 text-xs font-medium text-amber-700 dark:text-amber-400"
               >
                 <AlertCircle className="size-3.5 shrink-0 mt-0.5" aria-hidden="true" />
                 <span>
-                  {errors.root?.serverError?.message || errors.prompt?.message}
+                  {errors.root?.serverError?.message || errors.target?.message}
                 </span>
               </div>
             )}
@@ -581,61 +745,31 @@ export default function GeneratePage() {
               control={control}
               register={register}
               setValue={setValue}
-              disabled={isSubmitting}
+              disabled={busy}
+              error={errors.prompt?.message}
             />
 
-            <div className="flex flex-col-reverse items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <Button
-                type="button"
-                onClick={() => reset({ prompt: "" })}
-                variant="ghost"
-                size="sm"
-                className="w-full sm:w-auto"
-                disabled={isSubmitting}
-              >
-                <RotateCcw data-icon="inline-start" />
-                Clear
-              </Button>
-
-              <div className="flex w-full flex-col items-stretch gap-2 sm:w-auto sm:flex-row sm:items-center">
-                {!targetDraft ? (
-                  <span className="inline-flex items-center justify-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 sm:justify-start">
-                    <AlertCircle className="size-3.5 shrink-0" aria-hidden="true" />
-                    Add a story file first
-                  </span>
-                ) : null}
-
-                <Button
-                  type="submit"
-                  disabled={!canGenerate}
-                  className="w-full sm:w-auto"
-                >
-                  {isSubmitting ? (
-                    <>
-                      <RefreshCw data-icon="inline-start" className="animate-spin" />
-                      Rewriting…
-                    </>
-                  ) : (
-                    <>
-                      <Wand2 data-icon="inline-start" />
-                      Rewrite story
-                    </>
-                  )}
-                </Button>
-              </div>
-            </div>
+            <GenerateActions
+              control={control}
+              target={targetDraft}
+              busy={busy}
+              onClear={() => {
+                reset({ prompt: "", target: targetDraft })
+                clearErrors()
+              }}
+            />
           </form>
 
-          {isSubmitting ? (
+          {busy ? (
             <div
               role="status"
               aria-live="polite"
-              aria-label="Rewriting your story"
+              aria-label="Revising your file"
               className="flex flex-col gap-3 rounded-[var(--radius)] border border-primary/20 bg-primary/5 p-4 sm:p-5"
             >
               <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
                 <RefreshCw className="size-4 animate-spin text-primary" aria-hidden="true" />
-                <span>Reading your story and notes…</span>
+                <span>Reading your file and notes…</span>
               </div>
               <div className="flex flex-col gap-2" aria-hidden="true">
                 <div className="h-3 w-3/4 animate-pulse rounded-[var(--radius-sm)] bg-primary/15" />
@@ -645,7 +779,7 @@ export default function GeneratePage() {
             </div>
           ) : null}
 
-          {outputResult && !isSubmitting ? (
+          {outputResult && !busy ? (
             <div className="flex flex-col gap-4 rounded-[var(--radius-xl)] border border-primary/30 bg-primary/5 p-4 sm:p-5">
               <div className="flex flex-col gap-3 border-b border-primary/15 pb-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex min-w-0 items-center gap-2.5">
@@ -657,7 +791,9 @@ export default function GeneratePage() {
                       Revised: {outputResult.target_filename}
                     </h3>
                     <p className="truncate text-[11px] text-muted-foreground">
-                      Used notes: {outputResult.referenced_documents.join(", ")}
+                      {outputResult.referenced_documents.length > 0
+                        ? `Notes in library: ${outputResult.referenced_documents.join(", ")}`
+                        : "Agent retrieves notes when continuity needs them"}
                     </p>
                   </div>
                 </div>
@@ -704,7 +840,7 @@ export default function GeneratePage() {
 
               <p className="flex items-center gap-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
                 <Check className="size-3.5 shrink-0" aria-hidden="true" />
-                Ready to paste into your manuscript
+                Ready to paste back into your file
               </p>
             </div>
           ) : null}

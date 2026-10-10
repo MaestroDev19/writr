@@ -70,7 +70,7 @@ export async function uploadFileApi(
 
   if (role === "target") {
     throw new Error(
-      "Session story drafts are not uploaded to the notes library. Use the Write run endpoint instead."
+      "Session book files are not uploaded to the notes library. Use the Write run endpoint instead."
     )
   }
 

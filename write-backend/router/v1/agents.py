@@ -13,10 +13,17 @@ from utils.log import bind, scrub
 AgentsRouter = APIRouter(prefix="/agents", tags=["agents"])
 
 
-class AgentRequest(BaseModel):
-    """FE-built instruction (+ target text) as one user message."""
+# Keep in sync with write/src/api/limits.ts MAX_AGENT_CONTENT_CHARS.
+MAX_AGENT_CONTENT_CHARS = 80_000
 
-    content: str = Field(min_length=1)
+
+class AgentRequest(BaseModel):
+    """FE-built instruction (+ target text) as one user message.
+
+    Capped so a large draft cannot blow the worker timeout or model context.
+    """
+
+    content: str = Field(min_length=1, max_length=MAX_AGENT_CONTENT_CHARS)
 
 
 class AgentResponse(BaseModel):

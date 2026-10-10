@@ -79,7 +79,7 @@ export function UploadConfirmDialog({
               {mode === "dashboard-reference"
                 ? "Add to notes library"
                 : mode === "generate-target"
-                  ? "Open this story?"
+                  ? "Open this file?"
                   : "Confirm files"}
             </DialogTitle>
           </div>
@@ -147,10 +147,10 @@ export function UploadConfirmDialog({
                       }`}
                       aria-hidden="true"
                     />
-                    <span className="text-xs font-semibold text-foreground">Story file</span>
+                    <span className="text-xs font-semibold text-foreground">Book file</span>
                   </div>
                   <p className="text-[11px] leading-tight text-muted-foreground">
-                    The scene you want rewritten. Stays in Write only.
+                    A scene, outline, character sheet, script, or similar. Stays in Write only.
                   </p>
                 </button>
 
@@ -196,10 +196,10 @@ export function UploadConfirmDialog({
             <div className="flex flex-col gap-1 rounded-[var(--radius)] border border-border bg-muted/30 p-3 text-xs">
               <div className="flex items-center gap-1.5 font-semibold text-foreground">
                 <Target className="size-3.5 text-primary" aria-hidden="true" />
-                <span>Session story only</span>
+                <span>This session only</span>
               </div>
               <p className="text-[11px] leading-relaxed text-muted-foreground">
-                Your draft opens in Write for this session. It is not stored in the notes library.
+                This file opens in Write for this session. It is not stored in the notes library.
               </p>
             </div>
           ) : null}

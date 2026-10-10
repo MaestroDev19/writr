@@ -115,6 +115,6 @@ export const CRITIQUE_PRESETS: WorkflowPreset[] = [
 export const CONTEXT_VARIABLE_TAGS = [
   { tag: "{{reference_corpus}}", label: "Your notes", desc: "Pulls from your notes library" },
   { tag: "{{author_voice}}", label: "Your voice", desc: "Tone and style guidelines" },
-  { tag: "{{manuscript_draft}}", label: "Story draft", desc: "Current scene or chapter" },
+  { tag: "{{manuscript_draft}}", label: "Book file", desc: "Scene, outline, character sheet, script, or similar" },
   { tag: "{{pacing_rubric}}", label: "Pacing guide", desc: "Target rhythm and length" },
 ]

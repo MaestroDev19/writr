@@ -405,7 +405,7 @@ export default function DashboardPage() {
             Welcome, {displayName}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Add notes here. Open a story in Write to rewrite it.
+            Add notes here. Open a book file in Write to revise it.
           </p>
         </div>
       </header>
@@ -548,7 +548,7 @@ export default function DashboardPage() {
             }}
             tabIndex={0}
             role="button"
-            aria-label="Write and improve a scene"
+            aria-label="Write and revise a book file"
             className="group flex min-h-[11rem] cursor-pointer flex-col justify-between rounded-[var(--radius-xl)] border border-border bg-card p-5 transition-colors hover:border-primary/60 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring sm:p-6"
           >
             <div>
@@ -563,7 +563,7 @@ export default function DashboardPage() {
                 />
               </h3>
               <p className="mt-2 text-xs leading-relaxed text-muted-foreground sm:text-sm">
-                Open a chapter and ask Writr to rewrite it with help from your notes.
+                Open a scene, outline, character sheet, script, or other book file and revise it with your notes.
               </p>
             </div>
             <p className="mt-5 border-t border-border/60 pt-3 text-xs font-semibold text-primary">
