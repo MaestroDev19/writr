@@ -9,6 +9,7 @@ from core.limiter import limiter
 from core.user_settings import WorkflowName
 from services.supabase import AsyncServiceSupabaseDep, CurrentUserIdDep
 from utils.log import bind, scrub
+from utils.message_text import message_content_text
 
 AgentsRouter = APIRouter(prefix="/agents", tags=["agents"])
 
@@ -49,9 +50,7 @@ async def _run_agent(
         else:
             agent = build_generate_agent(model=model, owner_id=user_id)
         result = await asyncio.to_thread(_invoke_agent, agent, content)
-        text = result["messages"][-1].content
-        if not isinstance(text, str):
-            text = str(text or "")
+        text = message_content_text(result["messages"][-1].content).strip()
     except Exception as exc:
         bind(
             user_id=user_id,
