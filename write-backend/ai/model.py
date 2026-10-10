@@ -117,31 +117,5 @@ def resolved_k(
     return resolved_context_chunks(overrides, workflow)
 
 
-def build_default_model(
-    overrides: dict[str, Any] | None = None,
-    **kwargs: Any,
-):
-    """Gemini client for the shared RagLine.
-
-    The user contributes ``model_name`` only. Temperature and the other
-    sampling fields stay on the env defaults; Write and Review agents use
-    ``build_model`` for their own workflow settings.
-    """
-    s = get_settings()
-    row = overrides or {}
-    init_kwargs: dict[str, Any] = {
-        "model": _pick(row, "model_name", s.model_name),
-        "model_provider": "google_genai",
-        "temperature": s.temperature,
-        "max_tokens": s.max_token,
-        **kwargs,
-    }
-    if s.gemini_api_key:
-        init_kwargs["api_key"] = s.gemini_api_key
-    if s.top_p is not None:
-        init_kwargs["top_p"] = s.top_p
-    if s.top_k is not None:
-        init_kwargs["top_k"] = s.top_k
-    return init_chat_model(**init_kwargs)
 
 

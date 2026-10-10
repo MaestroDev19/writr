@@ -59,6 +59,9 @@ def build_vectorstore(
     )
 
 @lru_cache(maxsize=1)
+def get_vectorstore():
+    return build_vectorstore()
+
 def get_retriever(
     *,
     k: int = DEFAULT_K,
@@ -69,11 +72,11 @@ def get_retriever(
 ) -> VectorStoreRetriever:
     """Return a LangChain retriever over ``reference_chunks``.
 
-    When ``owner_id`` is set it is merged into ``filter`` for
-    ``match_documents`` metadata containment. Prefer storing ``owner_id``
-    inside chunk ``metadata`` at ingest (column-only filters need a custom RPC).
+    When ``owner_id`` is set it is merged into ``filter``. ``match_documents``
+    enforces tenancy on the ``reference_chunks.owner_id`` column; remaining
+    filter keys still use metadata containment.
     """
-    store = vectorstore or build_vectorstore()
+    store = vectorstore or get_vectorstore()
     kwargs: dict[str, Any] = {"k": k, **search_kwargs}
     if owner_id:
         meta_filter = kwargs.get("filter") or {}

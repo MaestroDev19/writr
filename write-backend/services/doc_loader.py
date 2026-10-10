@@ -72,7 +72,7 @@ class LoadedDocument:
     Attributes:
         text: Full extracted body (pages already joined).
         metadata: Source hints for downstream storage / retrieval
-                  (filename, mime type, visibility, etc.).
+                  (filename, mime type, etc.).
     """
 
     text: str
@@ -254,8 +254,6 @@ class DocLoader:
                 "source": normalized,
                 "filename": title or urlparse(normalized).path.rsplit("/", 1)[-1] or "web",
                 "mime_hint": "html",
-                # URL imports stay private — never published to a shared catalog.
-                "visibility": "private",
             },
         )
 
