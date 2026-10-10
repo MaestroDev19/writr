@@ -61,9 +61,9 @@ async def _run_agent(
     return AgentResponse(response=text)
 
 
-@AgentsRouter.post("/generate")
+@AgentsRouter.post("/write")
 @limiter.limit("10/minute")
-async def generate(
+async def write(
     request: Request,
     payload: AgentRequest,
     user_id: CurrentUserIdDep,
