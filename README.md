@@ -4,9 +4,9 @@
 
 # Writr
 
-Writing companion for authors. Sign in with Supabase, keep your lore in a notes library, rewrite a draft against that context, and get focused review feedback. Model API keys stay on the server.
+Writing companion for authors. Sign in with Supabase, keep lore in a notes library, rewrite drafts against that context, and get developmental review with scores and concrete suggestions. Model API keys stay on the server.
 
-[Getting started](#getting-started) · [What it does](#what-it-does) · [Packages](#packages) · [Configuration](#configuration)
+[Getting started](#getting-started) · [What it does](#what-it-does) · [Agents](#agents) · [Packages](#packages) · [Configuration](#configuration)
 
 ## Getting started
 
@@ -54,21 +54,36 @@ Writr is **cloud-only**. Writers authenticate with Supabase; notes, Write, and R
 
 | Screen | What you do |
 | :--- | :--- |
-| **Home** (`/dashboard`) | Upload reference notes (PDF, DOCX, TXT, MD) |
-| **Write** (`/generate`) | Rewrite a session draft using your notes + style settings |
-| **Review** (`/critique`) | Paste a scene / bible / character sheet; get scores and suggestions |
-| **Settings** | Hosted model badge, Write/Review presets, sampling (stored in `localStorage`) |
+| **Home** (`/dashboard`) | Upload reference notes (PDF, DOCX, TXT, MD), paste text, or fetch a link |
+| **Write** (`/generate`) | Open a session draft (`.txt` / `.md` / `.docx`); revise it with your notes + style settings |
+| **Review** (`/critique`) | Paste a scene / bible / character sheet; get scores and revision suggestions |
+| **Settings** | Hosted model, Write/Review presets, sampling, system directive |
 
 ```text
-Browser (write/) ──JWT──▶ FastAPI (write-backend/) ──▶ Supabase + hosted models
+Browser (write/) ──JWT──▶ FastAPI (write-backend/) ──▶ Supabase + hosted Gemini
 ```
+
+## Agents
+
+Write and Review are LangChain agents with a notes retrieval tool (RAG over your `reference_chunks`). The frontend builds the user message; the backend owns system prompts, tool loops, and model calls.
+
+| Guard | Value |
+| :--- | :--- |
+| Rate limit | `10/minute` per IP on `/agents/write` and `/agents/critique` |
+| Input cap | 80,000 characters (instruction + target) |
+| Client timeout | 90s for agent calls (60s default for other APIs) |
+| Vercel `maxDuration` | 120s on `main.py` |
+
+Responses are normalized to plain text before they reach the UI (provider content blocks / signatures are stripped). Prod logs scrub secrets and avoid full manuscript content.
+
+Streaming is planned later so long tool loops do not hit silent gateway timeouts.
 
 ## Packages
 
 | Folder | Role |
 | :--- | :--- |
 | [`write/`](write/) | Product UI — React 19, Vite 8, TypeScript, Tailwind v4, shadcn/ui |
-| [`write-backend/`](write-backend/) | FastAPI — auth, ingest, embeddings, inference |
+| [`write-backend/`](write-backend/) | FastAPI — auth, ingest, embeddings, agents, inference |
 | [`writr-desktop/`](writr-desktop/) | Tauri 2 shell (starter; not wired to the product UI yet) |
 
 ### Web scripts
@@ -84,7 +99,13 @@ bun run format       # Prettier
 
 ### Backend surface
 
-Protected routes expect a Supabase JWT. Check Swagger at `/docs` for the live API. Upload ingest is `POST /upload/{text,document,documents,link}` (202 + queued job). On long-lived hosts a worker claims jobs in-process; on Vercel that loop is off and Supabase Cron + `pg_net` hits `GET /internal/drain-jobs` instead (see `docs/supabase-drain-cron.sql`).
+Protected routes expect a Supabase JWT. Check Swagger at `/docs` for the live API.
+
+- **Upload ingest** — `POST /upload/{text,document,documents,link}` → 202 + queued job
+- **Agents** — `POST /agents/write`, `POST /agents/critique`
+- **Settings** — user Write/Review preferences persisted in Supabase
+
+On long-lived hosts a worker claims jobs in-process; on Vercel that loop is off and Supabase Cron + `pg_net` hits `GET /internal/drain-jobs` instead (see `docs/supabase-drain-cron.sql`).
 
 ### Desktop
 
@@ -147,7 +168,7 @@ Hobby Vercel only allows daily Vercel Cron, so Writr drains like Pantra:
 If Deployment Protection blocks the call, use a production custom domain (recommended) or add a Vercel automation bypass header in the SQL function. A local `uvicorn` worker still works when you are developing offline.
 
 > [!IMPORTANT]
-> CORS currently allows every origin. Narrow `allow_origins` in `write-backend/main.py` before production.
+> Tighten `allow_origins` in `write-backend/main.py` to your production frontend URL(s) before shipping.
 
 ## Repository layout
 
@@ -158,11 +179,12 @@ writr/
 ├── write/                     # product UI
 │   └── src/
 │       ├── pages/             # auth, dashboard, write, review, settings
+│       ├── api/               # Axios endpoints + limits
 │       ├── components/
-│       ├── contexts/          # auth, corpus, settings
-│       └── lib/               # api-client, supabase
+│       └── lib/               # prompts, file handler, supabase
 ├── write-backend/
 │   ├── main.py
+│   ├── ai/                    # agents, prompts, tools, model
 │   ├── router/                # HTTP routes
 │   ├── services/              # supabase, chunking, embeddings, queue
 │   └── core/config.py
@@ -177,7 +199,7 @@ Schema source of truth: [`docs/supabase-schema.sql`](docs/supabase-schema.sql).
 - **avatars** — public bucket, 5MB, JPEG/PNG/WebP, path prefixed by user id
 - **reference_chunks** — note text + `embedding vector(768)` for retrieval
 
-The web app reads `profiles` directly. Note ingest and embeddings go through the backend.
+The web app reads `profiles` directly. Note ingest, embeddings, and agents go through the backend.
 
 ## Design
 
