@@ -141,56 +141,111 @@ interface CritiqueReport {
   notesUsed: string
 }
 
+/** Models often wrap the JSON contract in ```json fences or a short preamble. */
+function jsonCandidates(raw: string): string[] {
+  const trimmed = raw.trim()
+  const seen = new Set<string>()
+  const out: string[] = []
+
+  const push = (value: string) => {
+    const text = value.trim()
+    if (!text || seen.has(text)) return
+    seen.add(text)
+    out.push(text)
+    const start = text.indexOf("{")
+    const end = text.lastIndexOf("}")
+    if (start !== -1 && end > start) {
+      const slice = text.slice(start, end + 1).trim()
+      if (!seen.has(slice)) {
+        seen.add(slice)
+        out.push(slice)
+      }
+    }
+  }
+
+  push(trimmed)
+  const wrapped = trimmed.match(
+    /^```[a-zA-Z0-9_-]*[ \t]*\r?\n?([\s\S]*?)\r?\n?```[ \t]*$/
+  )
+  if (wrapped?.[1]) push(wrapped[1])
+  for (const block of trimmed.matchAll(/```[a-zA-Z0-9_-]*[ \t]*\r?\n?([\s\S]*?)```/g)) {
+    if (block[1]) push(block[1])
+  }
+  return out
+}
+
+function asScore(value: unknown): number {
+  const n = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN
+  if (!Number.isFinite(n)) return 0
+  return Math.max(0, Math.min(100, Math.round(n)))
+}
+
+function asSeverity(value: unknown): "high" | "medium" | "low" {
+  const severity = typeof value === "string" ? value.toLowerCase() : ""
+  if (severity === "high" || severity === "low" || severity === "medium") return severity
+  return "medium"
+}
+
 function parseCritiqueAgentResponse(
   raw: string,
   lensName: string
 ): CritiqueReport {
   const trimmed = raw.trim()
-  try {
-    const parsed = JSON.parse(trimmed) as {
-      score_overall?: number
-      pacing_score?: number
-      voice_score?: number
-      friction_score?: number
-      pacing_summary?: string
-      voice_summary?: string
-      friction_summary?: string
+
+  for (const candidate of jsonCandidates(trimmed)) {
+    let parsed: {
+      score_overall?: unknown
+      pacing_score?: unknown
+      voice_score?: unknown
+      friction_score?: unknown
+      pacing_summary?: unknown
+      voice_summary?: unknown
+      friction_summary?: unknown
       recommendations?: Array<{
         category?: string
-        severity?: "high" | "medium" | "low"
+        severity?: string
         issue?: string
         revised_example?: string
       }>
-      report_text?: string
+      report_text?: unknown
+    }
+    try {
+      parsed = JSON.parse(candidate)
+    } catch {
+      continue
     }
 
     if (
-      parsed &&
-      typeof parsed === "object" &&
-      (parsed.score_overall != null || parsed.recommendations?.length)
+      !parsed ||
+      typeof parsed !== "object" ||
+      Array.isArray(parsed) ||
+      (parsed.score_overall == null && !parsed.recommendations?.length)
     ) {
-      return {
-        scoreOverall: parsed.score_overall ?? 0,
-        pacingScore: parsed.pacing_score ?? 0,
-        voiceScore: parsed.voice_score ?? 0,
-        frictionScore: parsed.friction_score ?? 0,
-        pacingSummary: parsed.pacing_summary ?? "Pace and clarity from your Review focus.",
-        voiceSummary: parsed.voice_summary ?? "Voice checked against your notes.",
-        frictionSummary: parsed.friction_summary ?? "Friction points called out below.",
-        recommendations: (parsed.recommendations ?? []).map((r) => ({
-          category: r.category ?? lensName,
-          severity: r.severity ?? "medium",
-          issue: r.issue ?? "",
-          revisedExample: r.revised_example ?? "",
-        })),
-        notesUsed:
-          typeof parsed.report_text === "string" && parsed.report_text
-            ? parsed.report_text.slice(0, 160)
-            : "Grounded in your notes library when matches were found.",
-      }
+      continue
     }
-  } catch {
-    // Prose / TOON response — surface as one suggestion block.
+
+    const text = (value: unknown, fallback: string) =>
+      typeof value === "string" && value.trim() ? value : fallback
+
+    return {
+      scoreOverall: asScore(parsed.score_overall),
+      pacingScore: asScore(parsed.pacing_score),
+      voiceScore: asScore(parsed.voice_score),
+      frictionScore: asScore(parsed.friction_score),
+      pacingSummary: text(parsed.pacing_summary, "Pace and clarity from your Review focus."),
+      voiceSummary: text(parsed.voice_summary, "Voice checked against your notes."),
+      frictionSummary: text(parsed.friction_summary, "Friction points called out below."),
+      recommendations: (parsed.recommendations ?? []).map((r) => ({
+        category: r.category?.trim() || lensName,
+        severity: asSeverity(r.severity),
+        issue: r.issue ?? "",
+        revisedExample: r.revised_example ?? "",
+      })),
+      notesUsed: text(
+        typeof parsed.report_text === "string" ? parsed.report_text.slice(0, 160) : "",
+        "Grounded in your notes library when matches were found."
+      ),
+    }
   }
 
   return {
@@ -727,12 +782,12 @@ export default function CritiquePage() {
                               : "Polish"}
                         </Badge>
                       </div>
-                      <p className="leading-relaxed text-muted-foreground">{rec.issue}</p>
+                      <p className="leading-relaxed whitespace-pre-line text-muted-foreground">{rec.issue}</p>
                       <blockquote className="rounded-[var(--radius-sm)] border border-border/60 bg-muted/40 p-2.5 leading-relaxed text-foreground">
                         <span className="mb-1 block text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">
                           Try this
                         </span>
-                        “{rec.revisedExample}”
+                        <span className="whitespace-pre-line">“{rec.revisedExample}”</span>
                       </blockquote>
                     </li>
                   ))}
