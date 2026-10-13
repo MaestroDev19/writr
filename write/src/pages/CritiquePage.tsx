@@ -50,6 +50,7 @@ import {
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field"
+import { MarkdownText } from "@/components/markdown-text"
 import { cn } from "cn"
 
 const CRITIQUE_LENS_IDS = [
@@ -80,28 +81,32 @@ const CRITIQUE_LENSES: CritiqueLens[] = [
     name: "Structure",
     short: "Organization",
     icon: Compass,
-    description: "Order, gaps, and how sections hang together in any story doc or script.",
+    description:
+      "Order, gaps, and how sections hang together in any story doc or script.",
   },
   {
     id: "cadence-rhythm",
     name: "Flow",
     short: "Readability",
     icon: Feather,
-    description: "Clarity, pacing, and how easy the text is to follow aloud or on the page.",
+    description:
+      "Clarity, pacing, and how easy the text is to follow aloud or on the page.",
   },
   {
     id: "voice-consistency",
     name: "Voice",
     short: "Tone match",
     icon: Sparkles,
-    description: "Tone, character voice, and consistency with your notes across docs.",
+    description:
+      "Tone, character voice, and consistency with your notes across docs.",
   },
   {
     id: "line-edit-polish",
     name: "Line polish",
     short: "Wording",
     icon: FileText,
-    description: "Tighten wording, cut filler, and clean lines in prose or scripts.",
+    description:
+      "Tighten wording, cut filler, and clean lines in prose or scripts.",
   },
 ]
 
@@ -168,21 +173,29 @@ function jsonCandidates(raw: string): string[] {
     /^```[a-zA-Z0-9_-]*[ \t]*\r?\n?([\s\S]*?)\r?\n?```[ \t]*$/
   )
   if (wrapped?.[1]) push(wrapped[1])
-  for (const block of trimmed.matchAll(/```[a-zA-Z0-9_-]*[ \t]*\r?\n?([\s\S]*?)```/g)) {
+  for (const block of trimmed.matchAll(
+    /```[a-zA-Z0-9_-]*[ \t]*\r?\n?([\s\S]*?)```/g
+  )) {
     if (block[1]) push(block[1])
   }
   return out
 }
 
 function asScore(value: unknown): number {
-  const n = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN
+  const n =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? Number(value)
+        : NaN
   if (!Number.isFinite(n)) return 0
   return Math.max(0, Math.min(100, Math.round(n)))
 }
 
 function asSeverity(value: unknown): "high" | "medium" | "low" {
   const severity = typeof value === "string" ? value.toLowerCase() : ""
-  if (severity === "high" || severity === "low" || severity === "medium") return severity
+  if (severity === "high" || severity === "low" || severity === "medium")
+    return severity
   return "medium"
 }
 
@@ -232,9 +245,18 @@ function parseCritiqueAgentResponse(
       pacingScore: asScore(parsed.pacing_score),
       voiceScore: asScore(parsed.voice_score),
       frictionScore: asScore(parsed.friction_score),
-      pacingSummary: text(parsed.pacing_summary, "Pace and clarity from your Review focus."),
-      voiceSummary: text(parsed.voice_summary, "Voice checked against your notes."),
-      frictionSummary: text(parsed.friction_summary, "Friction points called out below."),
+      pacingSummary: text(
+        parsed.pacing_summary,
+        "Pace and clarity from your Review focus."
+      ),
+      voiceSummary: text(
+        parsed.voice_summary,
+        "Voice checked against your notes."
+      ),
+      frictionSummary: text(
+        parsed.friction_summary,
+        "Friction points called out below."
+      ),
       recommendations: (parsed.recommendations ?? []).map((r) => ({
         category: r.category?.trim() || lensName,
         severity: asSeverity(r.severity),
@@ -242,7 +264,9 @@ function parseCritiqueAgentResponse(
         revisedExample: r.revised_example ?? "",
       })),
       notesUsed: text(
-        typeof parsed.report_text === "string" ? parsed.report_text.slice(0, 160) : "",
+        typeof parsed.report_text === "string"
+          ? parsed.report_text.slice(0, 160)
+          : "",
         "Grounded in your notes library when matches were found."
       ),
     }
@@ -261,7 +285,8 @@ function parseCritiqueAgentResponse(
         category: lensName,
         severity: "medium",
         issue: trimmed || "No feedback returned.",
-        revisedExample: "Apply the note above to a local passage, then re-run Review.",
+        revisedExample:
+          "Apply the note above to a local passage, then re-run Review.",
       },
     ],
     notesUsed: "Writr Review response",
@@ -294,7 +319,12 @@ function ScoreMeter({
         : "bg-primary"
 
   return (
-    <div className={cn("flex flex-col gap-2 rounded-[var(--radius)] border p-4", toneClass)}>
+    <div
+      className={cn(
+        "flex flex-col gap-2 rounded-[var(--radius)] border p-4",
+        toneClass
+      )}
+    >
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs font-semibold">{label}</span>
         <span className="text-sm font-bold tabular-nums">{score}</span>
@@ -308,11 +338,17 @@ function ScoreMeter({
         aria-label={`${label} score`}
       >
         <div
-          className={cn("h-full rounded-full transition-[width] duration-500 ease-out", barClass)}
+          className={cn(
+            "h-full rounded-full transition-[width] duration-500 ease-out",
+            barClass
+          )}
           style={{ width: `${score}%` }}
         />
       </div>
-      <p className="text-[11px] leading-relaxed text-muted-foreground">{summary}</p>
+      <MarkdownText
+        text={summary}
+        className="text-[11px] leading-relaxed text-muted-foreground"
+      />
     </div>
   )
 }
@@ -341,7 +377,7 @@ function ManuscriptField({
         <div className="flex items-center gap-2">
           <FieldLabel
             htmlFor="review-text"
-            className="text-xs font-semibold normal-case tracking-normal"
+            className="text-xs font-semibold tracking-normal normal-case"
           >
             Your document
           </FieldLabel>
@@ -350,7 +386,9 @@ function ManuscriptField({
           </Badge>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-[11px] text-muted-foreground">Try a sample:</span>
+          <span className="text-[11px] text-muted-foreground">
+            Try a sample:
+          </span>
           {SAMPLE_MANUSCRIPTS.map((s) => (
             <Button
               key={s.title}
@@ -396,7 +434,8 @@ function ReviewActions({
   onClear: () => void
 }) {
   const manuscript = useWatch({ control, name: "manuscript" }) ?? ""
-  const lensId = useWatch({ control, name: "lensId" }) ?? "developmental-structure"
+  const lensId =
+    useWatch({ control, name: "lensId" }) ?? "developmental-structure"
   const activeLens =
     CRITIQUE_LENSES.find((lens) => lens.id === lensId) || CRITIQUE_LENSES[0]
 
@@ -404,7 +443,9 @@ function ReviewActions({
     const draft = manuscript.trim()
     if (!draft) return false
     try {
-      return agentContentTooLong(critiquePromptBuilder(critiqueRequest(activeLens, draft)))
+      return agentContentTooLong(
+        critiquePromptBuilder(critiqueRequest(activeLens, draft))
+      )
     } catch {
       return false
     }
@@ -426,10 +467,10 @@ function ReviewActions({
 
       <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
         {contentTooLong ? (
-          <span className="inline-flex items-center justify-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 sm:max-w-xs sm:justify-start">
+          <span className="inline-flex items-center justify-center gap-1.5 text-xs font-medium text-amber-700 sm:max-w-xs sm:justify-start dark:text-amber-400">
             <AlertCircle className="size-3.5 shrink-0" aria-hidden="true" />
-            Document and focus must stay under {MAX_AGENT_CONTENT_CHARS.toLocaleString()}{" "}
-            characters.
+            Document and focus must stay under{" "}
+            {MAX_AGENT_CONTENT_CHARS.toLocaleString()} characters.
           </span>
         ) : null}
 
@@ -445,7 +486,11 @@ function ReviewActions({
           Clear
         </Button>
 
-        <Button type="submit" disabled={!canReview} className="w-full sm:w-auto">
+        <Button
+          type="submit"
+          disabled={!canReview}
+          className="w-full sm:w-auto"
+        >
           {busy ? (
             <>
               <RefreshCw data-icon="inline-start" className="animate-spin" />
@@ -491,7 +536,8 @@ export default function CritiquePage() {
   })
 
   const busy = isSubmitting || critiqueMutation.isPending
-  const lensId = useWatch({ control, name: "lensId" }) ?? "developmental-structure"
+  const lensId =
+    useWatch({ control, name: "lensId" }) ?? "developmental-structure"
   const activeLens =
     CRITIQUE_LENSES.find((l) => l.id === lensId) || CRITIQUE_LENSES[0]
 
@@ -513,7 +559,9 @@ export default function CritiquePage() {
       CRITIQUE_LENSES.find((l) => l.id === data.lensId) || CRITIQUE_LENSES[0]
 
     try {
-      const content = critiquePromptBuilder(critiqueRequest(lens, data.manuscript))
+      const content = critiquePromptBuilder(
+        critiqueRequest(lens, data.manuscript)
+      )
       const { response } = await critiqueMutation.mutateAsync(content)
       setReport(parseCritiqueAgentResponse(response, lens.name))
     } catch (err) {
@@ -554,11 +602,12 @@ export default function CritiquePage() {
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-8 px-4 py-8 sm:px-6 sm:py-10">
       <header className="flex flex-col gap-2">
-        <h1 className="text-balance text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+        <h1 className="text-2xl font-bold tracking-tight text-balance text-foreground sm:text-3xl">
           Review your writing
         </h1>
-        <p className="max-w-2xl text-pretty text-sm text-muted-foreground leading-relaxed">
-          Paste a scene, script, story bible, character sheet, or other story doc. Pick a focus. Get clear feedback grounded in your notes.
+        <p className="max-w-2xl text-sm leading-relaxed text-pretty text-muted-foreground">
+          Paste a scene, script, story bible, character sheet, or other story
+          doc. Pick a focus. Get clear feedback grounded in your notes.
         </p>
       </header>
 
@@ -570,11 +619,12 @@ export default function CritiquePage() {
                 <MessageSquareQuote className="size-5" aria-hidden="true" />
               </div>
               <div>
-                <CardTitle className="text-lg font-bold normal-case tracking-normal text-pretty">
+                <CardTitle className="text-lg font-bold tracking-normal text-pretty normal-case">
                   What should we look at?
                 </CardTitle>
                 <CardDescription className="mt-0.5 text-xs">
-                  Focus adapts to scenes, scripts, bibles, character notes, and other docs.
+                  Focus adapts to scenes, scripts, bibles, character notes, and
+                  other docs.
                 </CardDescription>
               </div>
             </div>
@@ -607,11 +657,12 @@ export default function CritiquePage() {
                     role="radiogroup"
                     aria-label="Review focus"
                   >
-                    <FieldLabel className="text-xs font-semibold normal-case tracking-normal">
+                    <FieldLabel className="text-xs font-semibold tracking-normal normal-case">
                       Focus
                     </FieldLabel>
                     <p className="text-[11px] text-muted-foreground">
-                      Works for prose, scripts, story bibles, character sheets, and similar docs.
+                      Works for prose, scripts, story bibles, character sheets,
+                      and similar docs.
                     </p>
                     <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                       {CRITIQUE_LENSES.map((lens) => {
@@ -624,11 +675,9 @@ export default function CritiquePage() {
                             role="radio"
                             aria-checked={selected}
                             disabled={busy}
-                            onClick={() =>
-                              field.onChange(lens.id)
-                            }
+                            onClick={() => field.onChange(lens.id)}
                             className={cn(
-                              "flex min-h-[4.5rem] flex-col items-start gap-1 rounded-[var(--radius)] border p-3 text-left transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
+                              "flex min-h-[4.5rem] flex-col items-start gap-1 rounded-[var(--radius)] border p-3 text-left transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden",
                               selected
                                 ? "border-primary bg-primary/5 ring-1 ring-primary/30"
                                 : "border-border bg-muted/20 hover:border-primary/40 hover:bg-muted/40"
@@ -638,7 +687,9 @@ export default function CritiquePage() {
                               <Icon
                                 className={cn(
                                   "size-3.5",
-                                  selected ? "text-primary" : "text-muted-foreground"
+                                  selected
+                                    ? "text-primary"
+                                    : "text-muted-foreground"
                                 )}
                                 aria-hidden="true"
                               />
@@ -661,7 +712,10 @@ export default function CritiquePage() {
                   role="alert"
                   className="flex items-start gap-2 text-xs font-medium text-amber-700 dark:text-amber-400"
                 >
-                  <AlertCircle className="size-3.5 shrink-0 mt-0.5" aria-hidden="true" />
+                  <AlertCircle
+                    className="mt-0.5 size-3.5 shrink-0"
+                    aria-hidden="true"
+                  />
                   <span>{errors.root.serverError.message}</span>
                 </div>
               ) : null}
@@ -694,7 +748,10 @@ export default function CritiquePage() {
               className="flex flex-col gap-3 rounded-[var(--radius)] border border-primary/20 bg-primary/5 p-4"
             >
               <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
-                <RefreshCw className="size-4 animate-spin text-primary" aria-hidden="true" />
+                <RefreshCw
+                  className="size-4 animate-spin text-primary"
+                  aria-hidden="true"
+                />
                 Reading your document and notes…
               </div>
               <div className="flex flex-col gap-2" aria-hidden="true">
@@ -715,13 +772,20 @@ export default function CritiquePage() {
                   <h2 className="text-sm font-bold text-foreground">
                     Feedback · {activeLens.name}
                   </h2>
-                  <p className="text-xs text-muted-foreground">{report.notesUsed}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {report.notesUsed}
+                  </p>
                 </div>
                 <div className="flex items-center gap-2">
                   <Badge variant="secondary" className="tabular-nums">
                     Overall {report.scoreOverall}
                   </Badge>
-                  <Button type="button" variant="outline" size="sm" onClick={handleCopyReport}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCopyReport}
+                  >
                     {copiedReport ? (
                       <>
                         <Check data-icon="inline-start" />
@@ -760,7 +824,10 @@ export default function CritiquePage() {
 
               <div className="flex flex-col gap-3">
                 <h3 className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-                  <CheckCircle2 className="size-3.5 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+                  <CheckCircle2
+                    className="size-3.5 text-emerald-600 dark:text-emerald-400"
+                    aria-hidden="true"
+                  />
                   Suggestions
                 </h3>
 
@@ -771,9 +838,15 @@ export default function CritiquePage() {
                       className="flex flex-col gap-2 rounded-[var(--radius)] border border-border bg-background/80 p-3.5 text-xs"
                     >
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="font-semibold text-foreground">{rec.category}</span>
+                        <span className="font-semibold text-foreground">
+                          {rec.category}
+                        </span>
                         <Badge
-                          variant={rec.severity === "high" ? "destructive" : "secondary"}
+                          variant={
+                            rec.severity === "high"
+                              ? "destructive"
+                              : "secondary"
+                          }
                         >
                           {rec.severity === "high"
                             ? "High impact"
@@ -782,13 +855,18 @@ export default function CritiquePage() {
                               : "Polish"}
                         </Badge>
                       </div>
-                      <p className="leading-relaxed whitespace-pre-line text-muted-foreground">{rec.issue}</p>
-                      <blockquote className="rounded-[var(--radius-sm)] border border-border/60 bg-muted/40 p-2.5 leading-relaxed text-foreground">
-                        <span className="mb-1 block text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">
-                          Try this
-                        </span>
-                        <span className="whitespace-pre-line">“{rec.revisedExample}”</span>
-                      </blockquote>
+                      <MarkdownText
+                        text={rec.issue}
+                        className="text-muted-foreground"
+                      />
+                      {rec.revisedExample.trim() ? (
+                        <blockquote className="rounded-[var(--radius-sm)] border border-border/60 bg-muted/40 p-2.5 leading-relaxed text-foreground">
+                          <span className="mb-1 block text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">
+                            Try this
+                          </span>
+                          <MarkdownText text={rec.revisedExample} />
+                        </blockquote>
+                      ) : null}
                     </li>
                   ))}
                 </ul>

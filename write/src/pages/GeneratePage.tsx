@@ -29,7 +29,10 @@ import {
   AlertCircle,
 } from "lucide-react"
 
-import { useSettings, DEFAULT_GENERATE_CONFIG } from "@/contexts/settings-context"
+import {
+  useSettings,
+  DEFAULT_GENERATE_CONFIG,
+} from "@/contexts/settings-context"
 import { useCorpus } from "@/contexts/corpus-context"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -49,6 +52,7 @@ import {
 } from "@/components/ui/field"
 
 import type { GenerateRevisionsResponse } from "@/types/document-roles"
+import { MarkdownText } from "@/components/markdown-text"
 import {
   UploadConfirmDialog,
   type PendingUpload,
@@ -122,7 +126,7 @@ function PromptField({
   return (
     <FieldGroup className="gap-5">
       <Field>
-        <FieldLabel className="text-xs font-semibold normal-case tracking-normal">
+        <FieldLabel className="text-xs font-semibold tracking-normal normal-case">
           Quick picks
         </FieldLabel>
         <div className="flex flex-wrap gap-2">
@@ -132,7 +136,10 @@ function PromptField({
               type="button"
               disabled={disabled}
               onClick={() =>
-                setValue("prompt", chip, { shouldDirty: true, shouldValidate: true })
+                setValue("prompt", chip, {
+                  shouldDirty: true,
+                  shouldValidate: true,
+                })
               }
               className={`min-h-10 rounded-[var(--radius)] border px-3 py-2 text-left text-xs transition-colors ${
                 prompt === chip
@@ -150,7 +157,7 @@ function PromptField({
         <div className="flex items-center justify-between gap-2">
           <FieldLabel
             htmlFor="revision-prompt"
-            className="text-xs font-semibold normal-case tracking-normal"
+            className="text-xs font-semibold tracking-normal normal-case"
           >
             Your instructions
           </FieldLabel>
@@ -201,7 +208,10 @@ function GenerateActions({
   }, [prompt, target?.status, target?.text])
 
   const canGenerate =
-    target?.status === "ready" && Boolean(target.text.trim()) && !contentTooLong && !busy
+    target?.status === "ready" &&
+    Boolean(target.text.trim()) &&
+    !contentTooLong &&
+    !busy
 
   return (
     <div className="flex flex-col-reverse items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -219,23 +229,27 @@ function GenerateActions({
 
       <div className="flex w-full flex-col items-stretch gap-2 sm:w-auto sm:flex-row sm:items-center">
         {target?.status === "ready" && contentTooLong ? (
-          <span className="inline-flex items-center justify-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 sm:justify-start">
+          <span className="inline-flex items-center justify-center gap-1.5 text-xs font-medium text-amber-700 sm:justify-start dark:text-amber-400">
             <AlertCircle className="size-3.5 shrink-0" aria-hidden="true" />
             File and instructions must stay under{" "}
             {MAX_AGENT_CONTENT_CHARS.toLocaleString()} characters.
           </span>
         ) : !target ? (
-          <span className="inline-flex items-center justify-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 sm:justify-start">
+          <span className="inline-flex items-center justify-center gap-1.5 text-xs font-medium text-amber-700 sm:justify-start dark:text-amber-400">
             <AlertCircle className="size-3.5 shrink-0" aria-hidden="true" />
             Add a book file first
           </span>
         ) : null}
 
-        <Button type="submit" disabled={!canGenerate} className="w-full sm:w-auto">
+        <Button
+          type="submit"
+          disabled={!canGenerate}
+          className="w-full sm:w-auto"
+        >
           {busy ? (
             <>
               <RefreshCw data-icon="inline-start" className="animate-spin" />
-                      Revising…
+              Revising…
             </>
           ) : (
             <>
@@ -261,10 +275,12 @@ export default function GeneratePage() {
   const extractGeneration = React.useRef(0)
   const [isTargetDragging, setIsTargetDragging] = React.useState(false)
 
-  const [pendingUpload, setPendingUpload] = React.useState<PendingUpload | null>(null)
+  const [pendingUpload, setPendingUpload] =
+    React.useState<PendingUpload | null>(null)
   const [isConfirmOpen, setIsConfirmOpen] = React.useState(false)
 
-  const [outputResult, setOutputResult] = React.useState<GenerateRevisionsResponse | null>(null)
+  const [outputResult, setOutputResult] =
+    React.useState<GenerateRevisionsResponse | null>(null)
   const [copied, setCopied] = React.useState(false)
 
   const writeMutation = useMutation({ ...writeAgentMutation })
@@ -352,7 +368,10 @@ export default function GeneratePage() {
       if (generation !== extractGeneration.current) return
       setTarget(null)
       toast.error(
-        getApiErrorMessage(err, "Could not read that file. Use a .txt, .md, or .docx file.")
+        getApiErrorMessage(
+          err,
+          "Could not read that file. Use a .txt, .md, or .docx file."
+        )
       )
     }
   }
@@ -377,7 +396,9 @@ export default function GeneratePage() {
       })
       const { response } = await writeMutation.mutateAsync(content)
       const revised = response.trim()
-      const wordCount = revised ? revised.split(/\s+/).filter(Boolean).length : 0
+      const wordCount = revised
+        ? revised.split(/\s+/).filter(Boolean).length
+        : 0
 
       setOutputResult({
         target_file_id: target.id,
@@ -419,11 +440,12 @@ export default function GeneratePage() {
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-8 px-4 py-8 sm:px-6 sm:py-10">
       <header className="flex flex-col gap-2">
-        <h1 className="text-balance text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+        <h1 className="text-2xl font-bold tracking-tight text-balance text-foreground sm:text-3xl">
           Work on a book file
         </h1>
-        <p className="max-w-2xl text-pretty text-sm text-muted-foreground leading-relaxed">
-          Open a scene, outline, character sheet, script, or other book file. Say what to change, and Writr revises it using your notes.
+        <p className="max-w-2xl text-sm leading-relaxed text-pretty text-muted-foreground">
+          Open a scene, outline, character sheet, script, or other book file.
+          Say what to change, and Writr revises it using your notes.
         </p>
       </header>
 
@@ -440,11 +462,14 @@ export default function GeneratePage() {
               </div>
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-sm font-bold text-foreground">Your file</h2>
+                  <h2 className="text-sm font-bold text-foreground">
+                    Your file
+                  </h2>
                   <Badge variant="secondary">This session only</Badge>
                 </div>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  A scene, outline, character sheet, script, or other book document.
+                  A scene, outline, character sheet, script, or other book
+                  document.
                 </p>
               </div>
             </div>
@@ -482,7 +507,8 @@ export default function GeneratePage() {
               <div className="flex items-start justify-between gap-3">
                 <div className="flex min-w-0 items-start gap-3">
                   <div className="flex size-10 shrink-0 items-center justify-center rounded-[var(--radius)] border border-primary/20 bg-background text-primary">
-                    {targetDraft.name.endsWith(".md") || targetDraft.name.endsWith(".txt") ? (
+                    {targetDraft.name.endsWith(".md") ||
+                    targetDraft.name.endsWith(".txt") ? (
                       <FileCode2 className="size-5" aria-hidden="true" />
                     ) : (
                       <FileText className="size-5" aria-hidden="true" />
@@ -522,12 +548,18 @@ export default function GeneratePage() {
               >
                 {targetDraft.status === "loading" ? (
                   <>
-                    <RefreshCw className="size-3.5 shrink-0 animate-spin" aria-hidden="true" />
+                    <RefreshCw
+                      className="size-3.5 shrink-0 animate-spin"
+                      aria-hidden="true"
+                    />
                     <span>Reading file…</span>
                   </>
                 ) : (
                   <>
-                    <FileCheck className="size-3.5 shrink-0" aria-hidden="true" />
+                    <FileCheck
+                      className="size-3.5 shrink-0"
+                      aria-hidden="true"
+                    />
                     <span>Ready to revise</span>
                   </>
                 )}
@@ -557,7 +589,7 @@ export default function GeneratePage() {
                 }
               }}
               onClick={() => targetFileInputRef.current?.click()}
-              className={`flex min-h-[180px] flex-col items-center justify-center gap-3 rounded-[var(--radius)] border-2 border-dashed p-6 text-center transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring ${
+              className={`flex min-h-[180px] flex-col items-center justify-center gap-3 rounded-[var(--radius)] border-2 border-dashed p-6 text-center transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden ${
                 isTargetDragging
                   ? "border-primary bg-primary/10"
                   : "border-border hover:border-primary/50 hover:bg-muted/30"
@@ -571,8 +603,9 @@ export default function GeneratePage() {
                   Add a book file
                 </p>
                 <p className="max-w-xs text-xs text-muted-foreground">
-                  {TARGET_FILE_TYPES_LABEL}. Up to {formatFileSize(MAX_TARGET_DRAFT_BYTES)}. On
-                  phones, use Choose file.
+                  {TARGET_FILE_TYPES_LABEL}. Up to{" "}
+                  {formatFileSize(MAX_TARGET_DRAFT_BYTES)}. On phones, use
+                  Choose file.
                 </p>
               </div>
               <Button
@@ -599,7 +632,9 @@ export default function GeneratePage() {
               </div>
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-sm font-bold text-foreground">Your notes</h2>
+                  <h2 className="text-sm font-bold text-foreground">
+                    Your notes
+                  </h2>
                   <Badge variant="outline">
                     {totalRefFiles} {totalRefFiles === 1 ? "file" : "files"}
                   </Badge>
@@ -623,7 +658,8 @@ export default function GeneratePage() {
           </div>
 
           <p className="text-xs leading-relaxed text-muted-foreground">
-            Writr uses these notes to keep names, tone, and world details consistent.
+            Writr uses these notes to keep names, tone, and world details
+            consistent.
           </p>
 
           <div className="max-h-[160px] overflow-y-auto overscroll-contain rounded-[var(--radius)] border border-border bg-muted/20">
@@ -662,10 +698,12 @@ export default function GeneratePage() {
           </div>
 
           <div className="mt-auto flex flex-col gap-1 border-t border-border pt-3 text-xs sm:flex-row sm:items-center sm:justify-between">
-            <span className="text-muted-foreground">Need more lore or guides?</span>
+            <span className="text-muted-foreground">
+              Need more lore or guides?
+            </span>
             <Link
               to="/dashboard#notes"
-              className="inline-flex items-center gap-0.5 font-medium text-primary hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+              className="inline-flex items-center gap-0.5 font-medium text-primary hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
             >
               Open notes library
               <ArrowUpRight className="size-3" aria-hidden="true" />
@@ -692,7 +730,7 @@ export default function GeneratePage() {
                 <Sparkles className="size-5" aria-hidden="true" />
               </div>
               <div>
-                <CardTitle className="text-lg font-bold normal-case tracking-normal text-pretty">
+                <CardTitle className="text-lg font-bold tracking-normal text-pretty normal-case">
                   What should change?
                 </CardTitle>
                 <CardDescription className="mt-0.5 text-xs">
@@ -721,7 +759,9 @@ export default function GeneratePage() {
               {" · "}
               {creativity.description}
             </p>
-            <span className="text-muted-foreground">{activeModelDisplayName}</span>
+            <span className="text-muted-foreground">
+              {activeModelDisplayName}
+            </span>
           </div>
 
           <form
@@ -734,7 +774,10 @@ export default function GeneratePage() {
                 role="alert"
                 className="flex items-start gap-2 text-xs font-medium text-amber-700 dark:text-amber-400"
               >
-                <AlertCircle className="size-3.5 shrink-0 mt-0.5" aria-hidden="true" />
+                <AlertCircle
+                  className="mt-0.5 size-3.5 shrink-0"
+                  aria-hidden="true"
+                />
                 <span>
                   {errors.root?.serverError?.message || errors.target?.message}
                 </span>
@@ -768,7 +811,10 @@ export default function GeneratePage() {
               className="flex flex-col gap-3 rounded-[var(--radius)] border border-primary/20 bg-primary/5 p-4 sm:p-5"
             >
               <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
-                <RefreshCw className="size-4 animate-spin text-primary" aria-hidden="true" />
+                <RefreshCw
+                  className="size-4 animate-spin text-primary"
+                  aria-hidden="true"
+                />
                 <span>Reading your file and notes…</span>
               </div>
               <div className="flex flex-col gap-2" aria-hidden="true">
@@ -803,13 +849,21 @@ export default function GeneratePage() {
                     {outputResult.word_count} words
                     {targetDraft?.wordCount !== undefined ? (
                       <span className="text-muted-foreground">
-                        ({outputResult.word_count - targetDraft.wordCount >= 0 ? "+" : ""}
+                        (
+                        {outputResult.word_count - targetDraft.wordCount >= 0
+                          ? "+"
+                          : ""}
                         {outputResult.word_count - targetDraft.wordCount})
                       </span>
                     ) : null}
                   </Badge>
 
-                  <Button type="button" variant="outline" size="sm" onClick={handleCopy}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCopy}
+                  >
                     {copied ? (
                       <>
                         <Check data-icon="inline-start" />
@@ -834,8 +888,8 @@ export default function GeneratePage() {
                 </div>
               </div>
 
-              <div className="max-h-[460px] overflow-y-auto overscroll-contain whitespace-pre-line rounded-[var(--radius)] border border-border/80 bg-background/90 p-4 text-sm leading-relaxed text-foreground sm:p-5">
-                {outputResult.revised_text}
+              <div className="max-h-[460px] overflow-y-auto overscroll-contain rounded-[var(--radius)] border border-border/80 bg-background/90 p-4 text-sm leading-relaxed text-foreground sm:p-5">
+                <MarkdownText text={outputResult.revised_text} />
               </div>
 
               <p className="flex items-center gap-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
