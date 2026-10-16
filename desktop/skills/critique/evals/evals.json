@@ -1,0 +1,17 @@
+{
+  "skill_name": "writr-critique",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Review this short screenplay scene for flow. It is not a novel. Focus: Flow.\n\nINT. ALLEY - NIGHT\nMAYA runs. She runs for a long time. She thinks about her childhood, her mother, the watch, the rain, the vendor, and what midnight used to mean, for almost a page.\nMAYA\nYou said midnight.\nVENDOR\nMidnight was the polite version.\nThey stare. Nothing else happens.",
+      "expected_output": "Flow findings about the action-line dump and the stalled ending, with evidence and severity, judged as a screenplay. No chapter advice and no full rewrite.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Continuity check on this game node. Accepted canon: Maya's debt flag is set in dock-03 and the pier ending must not fire while debt is true.\n\nnode pier-01\nif debt==true: still play the free ending\nMAYA: We're even.",
+      "expected_output": "A continuity finding that cites the canon and the node, with severity, and a local revised_example. Not a prose chapter rewrite.",
+      "files": []
+    }
+  ]
+}

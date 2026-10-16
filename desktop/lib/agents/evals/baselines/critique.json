@@ -1,0 +1,43 @@
+{
+  "token_count": 442,
+  "estimated_cost": null,
+  "model": "default",
+  "clarity_score": 85,
+  "structure_score": 90,
+  "issues": [],
+  "suggestions": [
+    "Consider adding 2-3 few-shot examples for consistent outputs",
+    "Consider adding role context: \"You are an expert...\""
+  ],
+  "sections": [
+    {
+      "name": "Introduction",
+      "lines": "1-1"
+    },
+    {
+      "name": "role",
+      "lines": "2-5"
+    },
+    {
+      "name": "inputs",
+      "lines": "6-16"
+    },
+    {
+      "name": "canon",
+      "lines": "17-27"
+    },
+    {
+      "name": "output",
+      "lines": "28-29"
+    },
+    {
+      "name": "fields",
+      "lines": "30-37"
+    }
+  ],
+  "has_examples": false,
+  "example_count": 0,
+  "has_output_format": true,
+  "word_count": 199,
+  "line_count": 37
+}

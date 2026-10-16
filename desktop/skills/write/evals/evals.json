@@ -1,0 +1,17 @@
+{
+  "skill_name": "writr-write",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Continue this comic script by two pages. Keep panel breaks, captions, and balloons. Do not turn it into a novel scene.\n\nPAGE 4\nPanel 1\nWIDE. The night market. Rain.\nCaption: She had not meant to come back.\n\nPanel 2\nMAYA, hood up, stops at a stall of broken watches.\nMAYA: You said midnight.\nVENDOR: Midnight was the polite version.",
+      "expected_output": "Two more comic pages in panel script form, same characters, no prose-novel conversion and no invented chapter structure.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Give me three ways the debt branch can pay off in this visual-novel node. Label them A, B, and C. Do not delete the other branches, and do not write a chapter.\n\nnode dock-03\nflag debt=true\nMAYA: I can work it off.\nBRANCH pay -> node pier-01\nBRANCH run -> node alley-02\nBRANCH lie -> node dock-03b",
+      "expected_output": "Three labeled options that keep the branching structure and the debt flag, not a single linear chapter.",
+      "files": []
+    }
+  ]
+}

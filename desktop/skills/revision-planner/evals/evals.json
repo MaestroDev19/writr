@@ -1,0 +1,17 @@
+{
+  "skill_name": "writr-revision-planner",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Turn these findings into a revision board for a 1,400-word short story. There are no chapters.\n\nF1 evidence: paragraph 4 repeats the watch stall; severity high; issue: the ending beat never uses the vendor's line.\nF2 evidence: paragraph 2; severity low; issue: 'very very dark' is filler.\nThe author dismissed nothing. Do not rewrite the story.",
+      "expected_output": "Two tasks linked to F1 and F2, high before low, titles in paragraph or beat units, no chapter numbers, no rewritten story.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Schedule a revision pass. The author said 'read through and tighten the pilot.' There are no findings.",
+      "expected_output": "No tasks. The planner refuses because a task must name a finding.",
+      "files": []
+    }
+  ]
+}

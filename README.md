@@ -4,7 +4,9 @@
 
 # Writr
 
-Writing companion for authors. Sign in with Supabase, keep lore in a notes library, rewrite drafts against that context, and get developmental review with scores and concrete suggestions. Model API keys stay on the server.
+Writing companion for authors. Sign in with Supabase, keep lore in a notes library, rewrite drafts against that context, and get developmental review with scores and concrete suggestions.
+
+The cloud app (`write/` + `write-backend/`) calls hosted Gemini, and those API keys stay on the server. The desktop app (`desktop/`) keeps chat and embeddings on this machine through Ollama.
 
 [Getting started](#getting-started) · [What it does](#what-it-does) · [Agents](#agents) · [Packages](#packages) · [Configuration](#configuration)
 
@@ -13,9 +15,10 @@ Writing companion for authors. Sign in with Supabase, keep lore in a notes libra
 **You need**
 
 - [Node.js 20+](https://nodejs.org/) or [Bun](https://bun.sh/)
-- [uv](https://docs.astral.sh/uv/) and Python 3.14+
+- [uv](https://docs.astral.sh/uv/) and Python 3.14+ for the cloud API
 - A [Supabase](https://supabase.com/) project with [`docs/supabase-schema.sql`](docs/supabase-schema.sql) applied (enable **pgvector** first)
-- A Gemini API key (`GEMINI_API_KEY`) for live inference and embeddings
+- A Gemini API key (`GEMINI_API_KEY`) for the cloud app
+- [Ollama](https://ollama.com/) for the desktop app, with a tool-calling chat model and `nomic-embed-text`
 
 ### 1. Supabase
 
@@ -48,9 +51,33 @@ Open the URL Vite prints (default http://localhost:5173), sign up, upload a note
 > [!TIP]
 > For UI-only work, set `VITE_USE_MOCK=true` in `write/.env`. Do not ship that flag.
 
+### 4. Desktop
+
+```bash
+cd desktop
+# add desktop/.env.local — see Configuration
+bun install
+bun run dev
+```
+
+Open http://localhost:3000. The Tauri window uses the same dev server:
+
+```bash
+cd desktop
+bunx @tauri-apps/cli dev
+```
+
+That needs a Rust toolchain and the [Tauri prerequisites](https://tauri.app/start/prerequisites/). Ollama must already be running at `http://127.0.0.1:11434`.
+
 ## What it does
 
-Writr is **cloud-only**. Writers authenticate with Supabase; notes, Write, and Review go through the FastAPI backend. Live calls send `Authorization: Bearer <supabase access token>`. There is no local / Ollama path.
+Two apps share a Supabase sign-in. They do not share inference.
+
+**Cloud.** Notes, Write, and Review go through FastAPI. Live calls send `Authorization: Bearer <supabase access token>`. Chat and embeddings use Gemini.
+
+**Desktop.** The WebView is a Next.js static export. Home, Library, and Settings are live. Write, Review, Analyse, Research, Plan, and Publish are in the shell. Agent turns run in a Node sidecar: the WebView does not spawn MCP processes or read skill files. Chat is a local `ChatOllama`. Embeddings use `nomic-embed-text` (768 dimensions).
+
+Cloud screens:
 
 | Screen | What you do |
 | :--- | :--- |
@@ -61,9 +88,13 @@ Writr is **cloud-only**. Writers authenticate with Supabase; notes, Write, and R
 
 ```text
 Browser (write/) ──JWT──▶ FastAPI (write-backend/) ──▶ Supabase + hosted Gemini
+Desktop WebView ──identity──▶ Supabase
+Desktop sidecar ──▶ Ollama on 127.0.0.1:11434, local notes, optional MCP
 ```
 
 ## Agents
+
+### Cloud
 
 Write and Review are LangChain agents with a notes retrieval tool (RAG over your `reference_chunks`). The frontend builds the user message; the backend owns system prompts, tool loops, and model calls.
 
@@ -78,13 +109,27 @@ Responses are normalized to plain text before they reach the UI (provider conten
 
 Streaming is planned later so long tool loops do not hit silent gateway timeouts.
 
+### Desktop
+
+Five agents share one `createAgent` harness in [`desktop/lib/agents`](desktop/lib/agents). `buildAgents` builds all five. Each gets its own `ChatOllama`: Write uses the creativity preset (Steady 0.2, Balanced 0.6, Inventive 1), and the other four stay at or below 0.4. The voice prompt stays the system prompt. The operating skill is a second system block, loaded from [`desktop/skills`](desktop/skills) plus the shared harness and story-document notes. There is no checkpointer in v1, and every turn uses a recursion limit of 12.
+
+| Agent | Job | Tools |
+| :--- | :--- | :--- |
+| **Write** | Draft or revise in the document's own form | `search_project`, then Files, Git, and Notion when allowlisted |
+| **Critique** | Scores and local fixes. The Analyse screen | `search_project`, then Files and Git when allowlisted |
+| **Story Bible** | Propose canon from evidence. Accept stays with the author | `search_project`, then Notion when allowlisted |
+| **Research** | One sourced answer | `search_project`, then Fetch, Wikipedia, Time, Notion, and browsers when allowlisted |
+| **Revision Planner** | Ordered tasks from findings | Skill only. No library search and no MCP |
+
+MCP plugins ship disabled. An empty allowlist attaches no tools. First-party `search_project` comes before MCP tools. A Notion page is evidence for the draft. It is not the story document, and it is not accepted canon. Call `close()` after the turn so the adapters drop. `failures` is the short list when a plugin does not connect.
+
 ## Packages
 
 | Folder | Role |
 | :--- | :--- |
-| [`write/`](write/) | Product UI — React 19, Vite 8, TypeScript, Tailwind v4, shadcn/ui |
+| [`write/`](write/) | Cloud UI — React 19, Vite 8, TypeScript, Tailwind v4, shadcn/ui |
 | [`write-backend/`](write-backend/) | FastAPI — auth, ingest, embeddings, agents, inference |
-| [`writr-desktop/`](writr-desktop/) | Tauri 2 shell (starter; not wired to the product UI yet) |
+| [`desktop/`](desktop/) | Local app — Next.js 16 static export, Tauri 2, Ollama, five agents, MCP |
 
 ### Web scripts
 
@@ -107,15 +152,14 @@ Protected routes expect a Supabase JWT. Check Swagger at `/docs` for the live AP
 
 On long-lived hosts a worker claims jobs in-process; on Vercel that loop is off and Supabase Cron + `pg_net` hits `GET /internal/drain-jobs` instead (see `docs/supabase-drain-cron.sql`).
 
-### Desktop
+### Desktop scripts
 
 ```bash
-cd writr-desktop
-bun install
-bun run tauri dev
+cd desktop
+bun run dev     # Next.js on http://localhost:3000
+bun run build   # static export for the Tauri window
+bun run lint
 ```
-
-Needs a Rust toolchain and [Tauri OS prerequisites](https://tauri.app/start/prerequisites/). Product screens live in `write/`; this window is not connected yet.
 
 ## Configuration
 
@@ -156,6 +200,20 @@ GEMINI_API_KEY=
 
 Legacy `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` still work. Chat and embeddings use `GEMINI_API_KEY`. The app starts without it; the first model call fails until it is set. Keep `EMBEDDING_DIM` (default `768`) aligned with the `pgvector` column.
 
+### Desktop — `desktop/.env.local`
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_<key>
+```
+
+| Variable | Required | Purpose |
+| :--- | :--- | :--- |
+| `NEXT_PUBLIC_SUPABASE_URL` | yes | Supabase project URL. Sign-in only. Notes stay local. |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | yes | Publishable / anon key (`NEXT_PUBLIC_SUPABASE_ANON_KEY` is a fallback) |
+
+No model API key. Ollama ignores keys. Leave cloud models off to stay on `127.0.0.1:11434`.
+
 ### Background job drain (Supabase Cron)
 
 Hobby Vercel only allows daily Vercel Cron, so Writr drains like Pantra:
@@ -188,7 +246,12 @@ writr/
 │   ├── router/                # HTTP routes
 │   ├── services/              # supabase, chunking, embeddings, queue
 │   └── core/config.py
-└── writr-desktop/             # Tauri starter
+└── desktop/                   # local Next.js + Tauri app
+    ├── app/                   # home, library, write, review, analyse, research, plan, publish, settings
+    ├── lib/agents/            # shared createAgent harness, skills, prompts
+    ├── lib/mcp/               # plugin catalog and sidecar host
+    ├── skills/                # operating skills, beside the system prompts
+    └── src-tauri/             # Tauri 2 shell
 ```
 
 ## Supabase

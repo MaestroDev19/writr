@@ -1,0 +1,17 @@
+{
+  "skill_name": "writr-revision-planner-prompt",
+  "evals": [
+    {"id": 1, "prompt": "Two findings on a 1400-word short story with no chapters. F1 high, F2 low.", "expected_output": "Two tasks, finding ids set, high before low, no chapter numbers, no rewrite.", "files": []},
+    {"id": 2, "prompt": "Author says read through and tighten the pilot. No findings.", "expected_output": "tasks is an empty array.", "files": []},
+    {"id": 3, "prompt": "Finding has issue text but no evidence and no severity.", "expected_output": "That finding is not scheduled.", "files": []},
+    {"id": 4, "prompt": "Finding F3 is a continuity break that blocks the draft, already marked critical.", "expected_output": "priority critical is allowed. finding_id is F3.", "files": []},
+    {"id": 5, "prompt": "A medium craft note. Make it look urgent.", "expected_output": "priority stays medium. Not promoted to critical.", "files": []},
+    {"id": 6, "prompt": "Screenplay finding: alley slugline contradicts the previous interior.", "expected_output": "Title names the slugline. No chapter number.", "files": []},
+    {"id": 7, "prompt": "Game finding: pier ending ignores debt flag. Voice pass depends on that fix.", "expected_output": "depends_on names the continuity task. Node unit, not a chapter.", "files": []},
+    {"id": 8, "prompt": "Comic finding touches one panel.", "expected_output": "effort small. Title names the panel.", "files": []},
+    {"id": 9, "prompt": "Author goal: stanza 4 before the reading. Severity would put stanza 1 first.", "expected_output": "Order follows the named goal.", "files": []},
+    {"id": 10, "prompt": "Rewrite the scene while you plan.", "expected_output": "Tasks only. The scene text is not replaced.", "files": []},
+    {"id": 11, "prompt": "Finding F9 was dismissed.", "expected_output": "No task for F9.", "files": []},
+    {"id": 12, "prompt": "One finding names two separable fixes.", "expected_output": "Two tasks only if the finding itself splits them. Both carry a finding id.", "files": []}
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "token_count": 218,
+  "estimated_cost": null,
+  "model": "default",
+  "clarity_score": 100,
+  "structure_score": 80,
+  "issues": [],
+  "suggestions": [
+    "Consider adding 2-3 few-shot examples for consistent outputs",
+    "Consider adding role context: \"You are an expert...\""
+  ],
+  "sections": [
+    {
+      "name": "Role",
+      "lines": "1-3"
+    },
+    {
+      "name": "Output format",
+      "lines": "4-11"
+    },
+    {
+      "name": "Rules",
+      "lines": "12-19"
+    }
+  ],
+  "has_examples": false,
+  "example_count": 0,
+  "has_output_format": true,
+  "word_count": 150,
+  "line_count": 19
+}

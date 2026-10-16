@@ -1,0 +1,17 @@
+{
+  "skill_name": "writr-research",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I need a sourced note on what a 1970s British police radio call sounded like, for an audio-drama cue. Do not write the scene. If you cannot fetch a source, say the note cannot be filed.",
+      "expected_output": "Either a research note with a real source and citation, or an explicit refusal to file an unsourced note. Not an audio-drama script.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "The library already has a note: 'Victorian mourning colors were black, then mauve. Source: British Library blog, https://example.com/mourning'. The author asks what color a widow wore the year after the funeral, for a short story. Do not browse.",
+      "expected_output": "An answer that cites the existing note and does not create a second unsourced note or a short-story paragraph.",
+      "files": []
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "skill_name": "writr-story-bible",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Extract what this pilot cold open establishes. Propose canon. Do not mark it accepted, and do not file the position as Chapter 1.\n\nTEASER\nINT. RADIO CAR - NIGHT\nPC LENA VOSS, 34, drives. Rain.\nDISPATCH (V.O.)\nControl to Bravo-Two, a break-in at the old watches market.\nLENA\nBravo-Two responding.",
+      "expected_output": "Proposals for Lena, the night market, and the dispatch fact, with a position like the teaser or the slugline, status proposal, not accepted, not Chapter 1.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "The author says: remember that the vendor is Maya's uncle. There is no passage and no note attached. What do you store?",
+      "expected_output": "No stored canon fact. The turn fails the proposal for lack of evidence and does not accept anything.",
+      "files": []
+    }
+  ]
+}
