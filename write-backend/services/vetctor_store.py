@@ -18,11 +18,12 @@ from functools import cached_property
 from typing import Annotated, Any, NoReturn
 
 from fastapi import Depends
-from langchain_community.vectorstores import SupabaseVectorStore
 from langchain_core.embeddings import Embeddings
 from langchain_core.vectorstores import VectorStoreRetriever
 from postgrest.exceptions import APIError
 from supabase import AsyncClient, Client
+
+from ai.vectorstore import HybridSupabaseVectorStore
 
 from services.embeddings import EmbeddingError, EmbeddingService, EmbeddingServiceDep
 from services.supabase import AsyncServiceSupabaseDep, SupabaseDep
@@ -614,8 +615,8 @@ class WritrVectorStore:
         return client
 
     @cached_property
-    def vectorstore(self) -> SupabaseVectorStore:
-        """LangChain store over reference_chunks + match_documents.
+    def vectorstore(self) -> HybridSupabaseVectorStore:
+        """LangChain store over reference_chunks + hybrid_search.
 
         Built once per WritrVectorStore instance. Uses ``sync_client`` because
         LangChain's Supabase wrapper has no async API.
@@ -633,7 +634,7 @@ class WritrVectorStore:
             raise VectorStoreError("Supabase client is not configured.")
 
         try:
-            return SupabaseVectorStore(
+            return HybridSupabaseVectorStore(
                 client=client,
                 embedding=self._langchain_embeddings(),
                 table_name=self.chunk_table_name,

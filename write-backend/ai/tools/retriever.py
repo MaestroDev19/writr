@@ -19,10 +19,11 @@ def make_search_notes_tool(
 
     @tool
     def search_notes(query: str) -> str:
-        """Search the author's reference notes for lore, voice, and continuity.
+        """Search the author's reference notes by meaning and by exact words.
 
         Use when you need names, traits, timeline, setting rules, or prior events
-        from the notes library before inventing details.
+        from the notes library before inventing details. Exact names and places
+        are matched as keywords; related notes are matched by meaning.
 
         Args:
             query: Short search query (about 2–12 words).

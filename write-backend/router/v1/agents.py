@@ -1,4 +1,5 @@
 import asyncio
+import json
 
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, Field
@@ -35,6 +36,17 @@ def _invoke_agent(agent, content: str):
     return agent.invoke({"messages": [{"role": "user", "content": content}]})
 
 
+def _response_text(result: dict) -> str:
+    """Prefer schema-enforced Review JSON; Write still returns the last message."""
+    structured = result.get("structured_response")
+    if structured is not None:
+        if hasattr(structured, "model_dump"):
+            return json.dumps(structured.model_dump())
+        if isinstance(structured, dict):
+            return json.dumps(structured)
+    return message_content_text(result["messages"][-1].content).strip()
+
+
 async def _run_agent(
     *,
     workflow: WorkflowName,
@@ -50,7 +62,7 @@ async def _run_agent(
         else:
             agent = build_generate_agent(model=model, owner_id=user_id)
         result = await asyncio.to_thread(_invoke_agent, agent, content)
-        text = message_content_text(result["messages"][-1].content).strip()
+        text = _response_text(result)
     except Exception as exc:
         bind(
             user_id=user_id,
