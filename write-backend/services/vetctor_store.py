@@ -26,7 +26,7 @@ from supabase import AsyncClient, Client
 from ai.vectorstore import HybridSupabaseVectorStore
 
 from services.embeddings import EmbeddingError, EmbeddingService, EmbeddingServiceDep
-from services.supabase import AsyncServiceSupabaseDep, SupabaseDep
+from services.supabase import AsyncServiceSupabaseDep, ServiceSupabaseDep
 from utils.log import bind, current_event, note, scrub
 
 # Table names in Supabase (public schema).
@@ -666,7 +666,7 @@ class WritrVectorStore:
 
 def get_writr_vector_store(
     async_client: AsyncServiceSupabaseDep,
-    sync_client: SupabaseDep,
+    sync_client: ServiceSupabaseDep,
     embedding_function: EmbeddingServiceDep,
 ) -> WritrVectorStore:
     """FastAPI dependency: async client for ingest, sync client for retrieval."""

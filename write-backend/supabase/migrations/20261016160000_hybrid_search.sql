@@ -103,4 +103,4 @@ grant execute on function public.hybrid_search(
   double precision,
   double precision,
   integer
-) to anon, authenticated, service_role;
+) to authenticated, service_role;

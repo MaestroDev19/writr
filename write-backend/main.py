@@ -32,7 +32,7 @@ from services.connector import Connector, get_connector
 from services.doc_loader import get_doc_loader
 from services.embeddings import get_embedding_service
 from services.queue import ActiveGenerationError, get_queue
-from services.supabase import get_async_service_supabase, get_supabase
+from services.supabase import get_async_service_supabase, get_service_supabase
 from services.vetctor_store import get_writr_vector_store
 from utils.log import bind, scrub
 from utils.wide_event import WideEventMiddleware, wide_event_scope
@@ -49,7 +49,7 @@ async def build_worker_connector() -> Connector:
         embedding_service=embeddings,
         queue=get_queue(service_client),
         writr_vector_store=get_writr_vector_store(
-            service_client, get_supabase(), embeddings
+            service_client, get_service_supabase(), embeddings
         ),
     )
 

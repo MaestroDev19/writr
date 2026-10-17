@@ -17,7 +17,7 @@ from supabase import Client
 
 from core.config import get_settings
 from services.embeddings import EmbeddingService, get_embedding_service
-from services.supabase import get_supabase
+from services.supabase import get_service_supabase
 
 CHUNK_TABLE = "reference_chunks"
 MATCH_QUERY = "match_documents"
@@ -105,7 +105,7 @@ def build_vectorstore(
     ``query_name`` is the vector-only RPC (``match_documents``). Text
     search goes through ``hybrid_search``.
     """
-    sync_client = client or get_supabase()
+    sync_client = client or get_service_supabase()
     if embedding is None:
         service = embedding_service or get_embedding_service(get_settings())
         embedding = _langchain_embeddings(service)

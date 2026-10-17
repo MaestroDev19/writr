@@ -18,7 +18,7 @@ from typing import Annotated
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from supabase import AsyncClient, AsyncClientOptions, Client, create_async_client, create_client
+from supabase import AsyncClient, AsyncClientOptions, Client, ClientOptions, create_async_client, create_client
 from supabase_auth.errors import AuthApiError
 from supabase_auth.types import User
 
@@ -43,6 +43,7 @@ def _get_supabase_credentials(role: str = "publishable") -> tuple[str, str]:
 
 _supabase_client: Client | None = None
 _async_supabase_client: AsyncClient | None = None
+_service_supabase_client: Client | None = None
 _async_service_supabase_client: AsyncClient | None = None
 
 # Eager sync client when credentials exist at import; otherwise lazy init later.
@@ -308,6 +309,45 @@ async def get_async_service_supabase() -> AsyncClient:
     return _async_service_supabase_client
 
 
+def get_service_supabase() -> Client:
+    """FastAPI dependency / singleton: synchronous Supabase client with secret key (bypasses RLS).
+
+    Use for trusted backend operations, such as LangChain vector store retrieval.
+    Always filter by owner_id in application logic when using this client.
+    """
+    global _service_supabase_client
+    if _service_supabase_client is None:
+        try:
+            url, _publishable_key = _get_supabase_credentials()
+            secret_key = _get_secret_key()
+            _service_supabase_client = create_client(
+                url,
+                secret_key,
+                options=ClientOptions(
+                    persist_session=False,
+                    auto_refresh_token=False,
+                ),
+            )
+            bind(
+                supabase_client_id=str(uuid.uuid4()),
+                client_kind="sync_service",
+            )
+        except Exception as e:
+            note(
+                operation="supabase_client_init",
+                supabase_client_id=str(uuid.uuid4()),
+                client_kind="sync_service",
+                error_type=type(e).__name__,
+                error_message=scrub(str(e)),
+                outcome="error",
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Supabase service client not initialized: {e}",
+            ) from e
+    return _service_supabase_client
+
+
 # ---------------------------------------------------------------------------
 # Per-request user client — JWT forwarded so Postgres RLS applies
 # ---------------------------------------------------------------------------
@@ -359,6 +399,9 @@ async def get_async_user_supabase(
         ) from e
     yield client
 
+
+ServiceSupabaseDep = Annotated[Client, Depends(get_service_supabase)]
+ServiceSupabaseClient = ServiceSupabaseDep
 
 AsyncServiceSupabaseDep = Annotated[AsyncClient, Depends(get_async_service_supabase)]
 AsyncUserSupabaseDep = Annotated[AsyncClient, Depends(get_async_user_supabase)]
