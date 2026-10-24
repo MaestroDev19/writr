@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, type FormEvent } from "react"
+import { useForm } from "react-hook-form"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import {
@@ -28,6 +28,10 @@ function isValidUrl(value: string) {
   }
 }
 
+interface AddLinkFormValues {
+  url: string
+}
+
 export function AddLinkPanel({
   open,
   onOpenChange,
@@ -39,17 +43,17 @@ export function AddLinkPanel({
   busy: boolean
   onAdd: (payload: { url: string }) => Promise<"ok" | "duplicate" | "error" | "thin">
 }) {
-  const [url, setUrl] = useState("")
-  const [invalid, setInvalid] = useState(false)
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors },
+  } = useForm<AddLinkFormValues>({
+    defaultValues: { url: "" },
+  })
 
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault()
-    const trimmed = url.trim()
-    if (!trimmed || !isValidUrl(trimmed)) {
-      setInvalid(true)
-      return
-    }
-    setInvalid(false)
+  const onSubmit = handleSubmit(async (data) => {
+    const trimmed = data.url.trim()
     const result = await onAdd({ url: trimmed })
     if (result === "duplicate") {
       toast.message("Already in library.")
@@ -63,12 +67,18 @@ export function AddLinkPanel({
       toast.error("Could not fetch link.")
       return
     }
-    setUrl("")
+    reset()
     onOpenChange(false)
-  }
+  })
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) reset()
+        onOpenChange(nextOpen)
+      }}
+    >
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Add link</DialogTitle>
@@ -76,24 +86,23 @@ export function AddLinkPanel({
             Fetch and extract a page into the local library.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={(e) => void handleSubmit(e)} className="flex flex-col gap-6">
+        <form onSubmit={onSubmit} className="flex flex-col gap-6">
           <FieldGroup>
-            <Field data-invalid={invalid || undefined}>
+            <Field data-invalid={errors.url ? true : undefined}>
               <FieldLabel htmlFor="link-url">URL</FieldLabel>
               <Input
                 id="link-url"
                 type="url"
-                value={url}
-                onChange={(e) => {
-                  setUrl(e.target.value)
-                  if (invalid) setInvalid(false)
-                }}
-                aria-invalid={invalid || undefined}
+                {...register("url", {
+                  required: "URL is required.",
+                  validate: (val) => isValidUrl(val.trim()) || "Enter a valid http(s) URL.",
+                })}
+                aria-invalid={errors.url ? true : undefined}
                 placeholder="https://"
                 disabled={busy}
                 autoComplete="off"
               />
-              {invalid ? <FieldError>Enter a valid http(s) URL.</FieldError> : null}
+              {errors.url?.message ? <FieldError>{errors.url.message}</FieldError> : null}
             </Field>
           </FieldGroup>
           <DialogFooter>

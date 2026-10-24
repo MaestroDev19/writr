@@ -6,6 +6,7 @@ import { loadAgentSkill } from "@/lib/agents/skills"
 import { AGENT_SYSTEM_PROMPTS, type AgentId } from "@/lib/agents/prompts"
 import {
   agentContextSchema,
+  defaultVectorSearch,
   searchProjectTool,
   type ProjectSearch,
 } from "@/lib/tools/search-project"
@@ -33,7 +34,7 @@ export type BuildAgentInput = {
   agent: AgentId
   model: BaseChatModel
   /**
-   * Closed over userId and projectId inside search_project.
+   * Closed over userId inside search_project.
    * Required for every agent except the Revision Planner.
    */
   search?: ProjectSearch
@@ -71,7 +72,6 @@ export function buildWriteAgent(model: BaseChatModel, search: ProjectSearch, too
   return buildAgent({ agent: "write", model, search, tools })
 }
 
-function requireSearch(agent: AgentId, search: ProjectSearch | undefined): ProjectSearch {
-  if (search) return search
-  throw new Error(`Library search is required for the ${agent} agent.`)
+function requireSearch(_agent: AgentId, search: ProjectSearch | undefined): ProjectSearch {
+  return search ?? defaultVectorSearch
 }

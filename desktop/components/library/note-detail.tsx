@@ -9,10 +9,12 @@ export function NoteDetail({
   note,
   onRetry,
   onClear,
+  onDelete,
 }: {
   note: LibraryNote
   onRetry: (id: string) => void
   onClear: () => void
+  onDelete?: (id: string) => void
 }) {
   return (
     <div className="flex h-full min-h-0 flex-col gap-5 p-6 sm:p-7">
@@ -23,9 +25,22 @@ export function NoteDetail({
             {note.sourceType} · {note.sourceLabel}
           </p>
         </div>
-        <Button type="button" size="sm" variant="ghost" onClick={onClear}>
-          Search
-        </Button>
+        <div className="flex items-center gap-2">
+          {onDelete ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+              onClick={() => onDelete(note.id)}
+            >
+              Delete
+            </Button>
+          ) : null}
+          <Button type="button" size="sm" variant="ghost" onClick={onClear}>
+            Search
+          </Button>
+        </div>
       </div>
 
       <dl className="grid gap-3 text-sm">

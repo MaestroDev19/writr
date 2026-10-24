@@ -18,5 +18,6 @@ export function createModel(settings: ChatSettingsStored, agent: AgentId): ChatO
     model: name,
     baseUrl: OLLAMA_BASE_URL,
     temperature: temperatureFor(agent, settings.creativity),
+    numCtx: 16384,
   })
 }

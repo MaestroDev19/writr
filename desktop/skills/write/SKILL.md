@@ -43,7 +43,7 @@ Convert kind only when the instruction asks. When you do, one line after the art
 - **A target document, or an explicit new-document ask.** “Continue” with nothing attached is not a target. Fail the turn rather than inventing a book around an empty dock.
 - **The instruction’s constraints:** length, tone, must-keep lines, must-change elements, audience, and format. Obey them. A rewrite keeps what the instruction did not name.
 - **Accepted canon** for the entities this turn touches, plus retrieved notes for voice and prior events. Proposals are not the continuity contract.
-- **Identity closure** on tools (`user_id`, `project_id`), never from the model.
+- **Identity closure** on tools (`user_id`), never from the model.
 
 ## What it uses
 

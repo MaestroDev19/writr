@@ -3,3 +3,6 @@ skills-lock.json
 .vercel
 .env*
 
+docs/
+.vscode/*
+

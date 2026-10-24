@@ -33,7 +33,7 @@ export function AddFilePanel({
   open: boolean
   onOpenChange: (open: boolean) => void
   busy: boolean
-  onAdd: (payload: { path: string; title: string }) => Promise<"ok" | "duplicate" | "error">
+  onAdd: (payload: { path: string; title: string; file?: File }) => Promise<"ok" | "duplicate" | "error">
 }) {
   const [rejectMessage, setRejectMessage] = useState<string | null>(null)
 
@@ -87,7 +87,7 @@ export function AddFilePanel({
           setRejectMessage("Unsupported type. Allowed: .docx, .txt, .md.")
           return
         }
-        const result = await onAdd({ path: file.name, title: file.name })
+        const result = await onAdd({ path: file.name, title: file.name, file })
         if (result === "duplicate") toast.message("Already in library.")
         else if (result === "error") toast.error("Could not add file.")
         else onOpenChange(false)

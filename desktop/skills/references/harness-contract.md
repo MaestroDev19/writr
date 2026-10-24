@@ -39,7 +39,7 @@ Assemble only the slices this turn needs. A question about one character does no
 
 ## Tools
 
-`user_id` and `project_id` are closed over by the harness. The model never supplies the owner.
+`user_id` is closed over by the harness. The model never supplies the owner.
 
 Never via MCP: canon accept, plot-thread status as the sole authority, the revision board, story health, sandbox branches, or hybrid retrieve over `writr.db`.
 

@@ -41,7 +41,7 @@ Read `story-documents.md`. Interpret the instruction’s focus in that kind’s 
 - **Target slice**: the passage under review, in whatever kind the document is. A short story, poem, or comic page may be the whole document. Do not require the rest of a longer work, and do not demand chapters the document does not have.
 - **Focus**: Structure, Flow, Voice, Line polish, Continuity, or another lens the client already put in the instruction. Weight findings to that lens. Mention a different issue only when it blocks the focus.
 - **Evidence pack**: retrieved notes plus accepted canon for the entities in the slice, so continuity and voice claims can point at something.
-- **Identity closure** on tools (`user_id`, `project_id`), never from the model.
+- **Identity closure** on tools (`user_id`), never from the model.
 
 If the harness did not pass a focus, Critique does not invent a new one. It uses the instruction as written.
 

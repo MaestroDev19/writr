@@ -9,9 +9,8 @@ import {
   useState,
   type ReactNode,
 } from "react"
-import type { AuthChangeEvent, Session, User } from "@supabase/supabase-js"
-import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { supabase } from "@/lib/supabase"
+import type { Session, User } from "@supabase/supabase-js"
+import { authClient, type SessionData, type UserData } from "@/lib/auth-client"
 import type { LoginFormValues, UserProfile } from "@/types/auth"
 
 interface SignUpParams {
@@ -39,175 +38,90 @@ interface AuthContextType {
   signOut: () => Promise<void>
   resetPassword: (email: string) => Promise<{ error?: string; success: boolean }>
   refreshProfile: () => Promise<void>
+  updateProfile: (data: { authorName?: string; avatarUrl?: string }) => Promise<{ error?: string; profile?: UserProfile }>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-async function fetchUserProfile(userId: string): Promise<UserProfile | null> {
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("id, author_name, avatar_url, updated_at")
-    .eq("id", userId)
-    .maybeSingle()
-
-  if (error) return null
-  return data as UserProfile | null
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const queryClient = useQueryClient()
   const [session, setSession] = useState<Session | null>(null)
   const [user, setUser] = useState<User | null>(null)
+  const [profile, setProfile] = useState<UserProfile | null>(null)
   const [isAuthLoading, setIsAuthLoading] = useState(true)
 
   useEffect(() => {
     let isMounted = true
 
-    supabase.auth.getSession().then(({ data: { session: initialSession } }) => {
+    // Synchronize initial state from localStorage / token validation
+    authClient.init().then((state) => {
       if (!isMounted) return
-      setSession(initialSession)
-      setUser(initialSession?.user ?? null)
+      setSession(state.session as unknown as Session)
+      setUser(state.user as unknown as User)
+      setProfile(state.profile)
       setIsAuthLoading(false)
     })
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(
-      (_event: AuthChangeEvent, currentSession: Session | null) => {
-        if (!isMounted) return
-        setSession(currentSession)
-        setUser(currentSession?.user ?? null)
-        setIsAuthLoading(false)
-
-        if (currentSession?.user?.id) {
-          queryClient.invalidateQueries({
-            queryKey: ["profile", currentSession.user.id],
-          })
-        } else {
-          queryClient.removeQueries({ queryKey: ["profile"] })
-        }
-      }
-    )
+    const unsubscribe = authClient.subscribe((state) => {
+      if (!isMounted) return
+      setSession(state.session as unknown as Session)
+      setUser(state.user as unknown as User)
+      setProfile(state.profile)
+      setIsAuthLoading(false)
+    })
 
     return () => {
       isMounted = false
-      subscription.unsubscribe()
+      unsubscribe()
     }
-  }, [queryClient])
-
-  const {
-    data: profile = null,
-    isLoading: isProfileLoading,
-    refetch: refetchProfile,
-  } = useQuery({
-    queryKey: ["profile", user?.id],
-    queryFn: () =>
-      user?.id ? fetchUserProfile(user.id) : Promise.resolve(null),
-    enabled: !!user?.id,
-    staleTime: 1000 * 60 * 5,
-  })
+  }, [])
 
   const signIn = useCallback(
-    async ({
-      email,
-      password,
-    }: LoginFormValues): Promise<{ error?: string }> => {
-      try {
-        const { error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        })
-        if (error) return { error: error.message }
-        return {}
-      } catch (err) {
-        return {
-          error: err instanceof Error ? err.message : "Failed to sign in",
-        }
-      }
+    async (credentials: LoginFormValues): Promise<{ error?: string }> => {
+      return authClient.signIn(credentials)
     },
     []
   )
 
   const signUp = useCallback(
-    async ({
-      email,
-      password,
-      fullName,
-    }: SignUpParams): Promise<SignUpResult> => {
-      try {
-        const { data, error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            data: {
-              author_name: fullName,
-              full_name: fullName,
-            },
-          },
-        })
-
-        if (error) {
-          return { needsEmailConfirmation: false, error: error.message }
-        }
-
-        const newUser = data.user
-        const newSession = data.session
-
-        if (newUser?.identities && newUser.identities.length === 0) {
-          return {
-            needsEmailConfirmation: false,
-            error: "An account with this email already exists. Please log in.",
-          }
-        }
-
-        return {
-          user: newUser,
-          session: newSession,
-          needsEmailConfirmation: !!(newUser && !newSession),
-        }
-      } catch (err) {
-        return {
-          needsEmailConfirmation: false,
-          error: err instanceof Error ? err.message : "Failed to sign up",
-        }
+    async (params: SignUpParams): Promise<SignUpResult> => {
+      const result = await authClient.signUp(params)
+      return {
+        user: (result.user as unknown as User) ?? null,
+        session: (result.session as unknown as Session) ?? null,
+        needsEmailConfirmation: result.needsEmailConfirmation,
+        error: result.error,
       }
     },
     []
   )
 
   const signOut = useCallback(async () => {
-    try {
-      await supabase.auth.signOut()
-      queryClient.removeQueries({ queryKey: ["profile"] })
-      setSession(null)
-      setUser(null)
-    } catch {
-      // Session clear is best-effort
-    }
-  }, [queryClient])
+    await authClient.signOut()
+    setSession(null)
+    setUser(null)
+    setProfile(null)
+  }, [])
 
   const resetPassword = useCallback(
     async (email: string): Promise<{ error?: string; success: boolean }> => {
-      try {
-        const { error } = await supabase.auth.resetPasswordForEmail(email, {
-          redirectTo: `${window.location.origin}/login`,
-        })
-        if (error) return { error: error.message, success: false }
-        return { success: true }
-      } catch (err) {
-        return {
-          error:
-            err instanceof Error ? err.message : "Failed to send reset email",
-          success: false,
-        }
-      }
+      return authClient.resetPassword(email)
     },
     []
   )
 
   const refreshProfile = useCallback(async () => {
-    if (user?.id) await refetchProfile()
-  }, [user?.id, refetchProfile])
+    const updated = await authClient.syncMe()
+    if (updated?.profile) {
+      setProfile(updated.profile)
+    }
+  }, [])
+
+  const updateProfile = useCallback(
+    async (data: { authorName?: string; avatarUrl?: string }) => {
+      return authClient.updateProfile(data)
+    },
+    []
+  )
 
   const contextValue = useMemo<AuthContextType>(
     () => ({
@@ -215,25 +129,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session,
       profile,
       isLoading: isAuthLoading,
-      isProfileLoading,
+      isProfileLoading: false,
       isAuthenticated: !!user,
       signIn,
       signUp,
       signOut,
       resetPassword,
       refreshProfile,
+      updateProfile,
     }),
     [
       user,
       session,
       profile,
       isAuthLoading,
-      isProfileLoading,
       signIn,
       signUp,
       signOut,
       resetPassword,
       refreshProfile,
+      updateProfile,
     ]
   )
 

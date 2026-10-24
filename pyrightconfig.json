@@ -1,0 +1,5 @@
+{
+  "extraPaths": [
+    ".agents/skills/deep-research/scripts"
+  ]
+}

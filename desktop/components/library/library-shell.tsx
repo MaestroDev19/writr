@@ -12,9 +12,13 @@ import { AddPastePanel } from "@/components/library/add-paste-panel"
 import { AddLinkPanel } from "@/components/library/add-link-panel"
 import { IngestProgress } from "@/components/library/ingest-progress"
 import { pingOllama } from "@/lib/setup"
+import { VectorStore, type StoredDocument } from "@/lib/vector-store"
+import { isTauri } from "@/lib/tauri"
+import { getCurrentUserId, supabase } from "@/lib/supabase"
 import type {
   IngestProgressState,
   LibraryNote,
+  NoteSourceType,
   SearchHit,
 } from "@/types/library"
 
@@ -39,6 +43,7 @@ export function LibraryShell() {
   const [busy, setBusy] = useState(false)
   const [ollamaOk, setOllamaOk] = useState(true)
 
+  // Periodic health check for Ollama status
   useEffect(() => {
     void pingOllama().then(setOllamaOk)
     const id = window.setInterval(() => {
@@ -47,19 +52,87 @@ export function LibraryShell() {
     return () => window.clearInterval(id)
   }, [])
 
+  // Hydrate notes list from SQLite database for the active authenticated user
+  useEffect(() => {
+    let active = true
+
+    async function loadDocuments() {
+      if (!isTauri()) return
+      const currentUserId = getCurrentUserId()
+      if (!currentUserId) {
+        if (active) setNotes([])
+        return
+      }
+
+      try {
+        const store = new VectorStore()
+        const docs = await store.listDocuments()
+        if (!active) return
+
+        const loadedNotes: LibraryNote[] = docs.map((doc) => {
+          let sourceType: NoteSourceType = "file"
+          let sourceLabel = doc.name
+          if (doc.name.startsWith("http://") || doc.name.startsWith("https://")) {
+            sourceType = "link"
+          } else if (
+            doc.name.startsWith("Note ") ||
+            doc.name === "Pasted note" ||
+            doc.name === "clipboard"
+          ) {
+            sourceType = "paste"
+            sourceLabel = "clipboard"
+          }
+
+          return {
+            id: doc.id,
+            title: doc.name,
+            sourceType,
+            sourceLabel,
+            status: "ready" as const,
+            shaShort: shortSha(doc.id),
+            createdAt: doc.createdAt ?? new Date().toISOString(),
+          }
+        })
+
+        setNotes(loadedNotes)
+      } catch (err) {
+        console.error("Failed to load reference documents:", err)
+      }
+    }
+
+    void loadDocuments()
+
+    // Listen for auth transitions (e.g. login/logout or account switch on shared PC)
+    const { data: authListener } = supabase.auth.onAuthStateChange(() => {
+      void loadDocuments()
+    })
+
+    return () => {
+      active = false
+      authListener.subscription.unsubscribe()
+    }
+  }, [])
+
   const selected = notes.find((n) => n.id === selectedId) ?? null
 
   const runIngest = useCallback(
     async (
-      draft: Omit<LibraryNote, "status" | "createdAt"> & { bodyKey: string }
+      draft: Omit<LibraryNote, "status" | "createdAt"> & {
+        bodyKey: string
+        file?: File
+      }
     ) => {
-      const existing = notes.find((n) => n.shaShort === draft.shaShort)
+      const existing = notes.find(
+        (n) =>
+          (n.shaShort === draft.shaShort || n.title === draft.title) &&
+          n.status === "ready"
+      )
       if (existing) return "duplicate" as const
 
       setBusy(true)
-      const id = crypto.randomUUID()
+      const tempId = crypto.randomUUID()
       const ingesting: LibraryNote = {
-        id,
+        id: tempId,
         title: draft.title,
         sourceType: draft.sourceType,
         sourceLabel: draft.sourceLabel,
@@ -68,57 +141,73 @@ export function LibraryShell() {
         createdAt: new Date().toISOString(),
       }
       setNotes((prev) => [ingesting, ...prev])
-      setSelectedId(id)
-
-      const stages: Array<{
-        stage: IngestProgressState["stage"]
-        percent: number
-      }> = [
-        { stage: "reading", percent: 15 },
-        { stage: "chunking", percent: 35 },
-        { stage: "embedding", percent: 70 },
-        { stage: "saving", percent: 90 },
-      ]
+      setSelectedId(tempId)
 
       try {
-        for (const step of stages) {
-          setProgress({
-            stage: step.stage,
-            percent: step.percent,
-            noteTitle: draft.title,
-            embeddingCurrent: step.stage === "embedding" ? 2 : undefined,
-            embeddingTotal: step.stage === "embedding" ? 4 : undefined,
-          })
-          await new Promise((r) => setTimeout(r, 350))
-        }
+        const store = new VectorStore()
+        let storedDoc: StoredDocument
 
-        if (draft.sourceType === "link" && draft.bodyKey.length < 12) {
-          throw new Error("thin")
-        }
-
-        setProgress({ stage: "done", percent: 100, noteTitle: draft.title })
-        setNotes((prev) =>
-          prev.map((n) =>
-            n.id === id ? { ...n, status: "ready" as const } : n
+        if (draft.sourceType === "paste") {
+          storedDoc = await store.addTexts(
+            draft.bodyKey,
+            draft.title,
+            undefined,
+            setProgress
           )
-        )
-        return "ok" as const
-      } catch (err) {
-        const thin = err instanceof Error && err.message === "thin"
+        } else if (draft.sourceType === "link") {
+          storedDoc = await store.addDocuments(
+            draft.bodyKey,
+            draft.title,
+            undefined,
+            setProgress
+          )
+        } else {
+          // File ingestion (pass File object if in browser, or path string if desktop Tauri)
+          storedDoc = await store.addDocuments(
+            draft.file ?? draft.bodyKey,
+            draft.title,
+            undefined,
+            setProgress
+          )
+        }
+
         setNotes((prev) =>
           prev.map((n) =>
-            n.id === id
+            n.id === tempId
               ? {
                   ...n,
-                  status: "failed" as const,
-                  errorMessage: thin
-                    ? "Page extract was too thin to index."
-                    : "Ingest failed. Retry when Ollama is up.",
+                  id: storedDoc.id,
+                  title: storedDoc.name,
+                  status: "ready" as const,
+                  shaShort: shortSha(storedDoc.id),
                 }
               : n
           )
         )
-        return thin ? ("thin" as const) : ("error" as const)
+        setSelectedId(storedDoc.id)
+        toast.success(`Indexed "${storedDoc.name}" into library.`)
+        return "ok" as const
+      } catch (err: unknown) {
+        console.error("Ingest failed:", err)
+        const errMsg = err instanceof Error ? err.message : String(err)
+        const isThin =
+          errMsg.toLowerCase().includes("thin") ||
+          errMsg.toLowerCase().includes("insufficient text")
+
+        setNotes((prev) =>
+          prev.map((n) =>
+            n.id === tempId
+              ? {
+                  ...n,
+                  status: "failed" as const,
+                  errorMessage: isThin
+                    ? "Page extract was too thin to index."
+                    : errMsg || "Ingest failed. Retry when Ollama is up.",
+                }
+              : n
+          )
+        )
+        return isThin ? ("thin" as const) : ("error" as const)
       } finally {
         setBusy(false)
         setProgress(IDLE_PROGRESS)
@@ -128,51 +217,89 @@ export function LibraryShell() {
     [notes]
   )
 
-  async function handleRetry(id: string) {
-    const note = notes.find((n) => n.id === id)
-    if (!note) return
-    setNotes((prev) =>
-      prev.map((n) =>
-        n.id === id
-          ? { ...n, status: "ingesting", errorMessage: undefined }
-          : n
+  const handleRetry = useCallback(
+    async (id: string) => {
+      const note = notes.find((n) => n.id === id)
+      if (!note) return
+      setNotes((prev) =>
+        prev.map((n) =>
+          n.id === id
+            ? { ...n, status: "ingesting", errorMessage: undefined }
+            : n
+        )
       )
-    )
-    setBusy(true)
-    setProgress({
-      stage: "embedding",
-      percent: 55,
-      noteTitle: note.title,
-      embeddingCurrent: 1,
-      embeddingTotal: 3,
-    })
-    await new Promise((r) => setTimeout(r, 600))
-    setNotes((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, status: "ready" } : n))
-    )
-    setBusy(false)
-    setProgress(IDLE_PROGRESS)
-  }
+      setBusy(true)
+      try {
+        const store = new VectorStore()
+        let storedDoc: StoredDocument
+        if (note.sourceType === "link" || note.sourceType === "file") {
+          storedDoc = await store.addDocuments(
+            note.sourceLabel,
+            note.title,
+            undefined,
+            setProgress
+          )
+        } else {
+          storedDoc = await store.addTexts(
+            note.title,
+            note.title,
+            undefined,
+            setProgress
+          )
+        }
+        setNotes((prev) =>
+          prev.map((n) =>
+            n.id === id
+              ? {
+                  ...n,
+                  id: storedDoc.id,
+                  title: storedDoc.name,
+                  status: "ready" as const,
+                  shaShort: shortSha(storedDoc.id),
+                }
+              : n
+          )
+        )
+        setSelectedId(storedDoc.id)
+        toast.success(`Indexed "${storedDoc.name}" into library.`)
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err)
+        setNotes((prev) =>
+          prev.map((n) =>
+            n.id === id
+              ? {
+                  ...n,
+                  status: "failed" as const,
+                  errorMessage: errMsg || "Ingest failed. Retry when Ollama is up.",
+                }
+              : n
+          )
+        )
+      } finally {
+        setBusy(false)
+        setProgress(IDLE_PROGRESS)
+      }
+    },
+    [notes]
+  )
 
-  async function handleSearch(query: string): Promise<SearchHit[]> {
-    const q = query.toLowerCase()
-    const ready = notes.filter((n) => n.status === "ready")
-    return ready
-      .filter(
-        (n) =>
-          n.title.toLowerCase().includes(q) ||
-          n.sourceLabel.toLowerCase().includes(q)
-      )
-      .slice(0, 12)
-      .map((n, i) => ({
-        id: `${n.id}-hit`,
-        noteId: n.id,
-        noteTitle: n.title,
-        snippet: `Local hit for "${query}" in ${n.title}. Full hybrid retrieve wires when the embed index is ready.`,
-        ordinal: i + 1,
-        score: Math.max(0.4, 1 - i * 0.07),
-      }))
-  }
+  const handleDelete = useCallback(async (id: string) => {
+    try {
+      const store = new VectorStore()
+      await store.deleteDocument(id)
+      setNotes((prev) => prev.filter((n) => n.id !== id))
+      setSelectedId((prev) => (prev === id ? null : prev))
+      toast.success("Document removed from library.")
+    } catch (err) {
+      console.error("Failed to delete document:", err)
+      toast.error("Could not delete document.")
+    }
+  }, [])
+
+  const handleSearch = useCallback(async (query: string): Promise<SearchHit[]> => {
+    const store = new VectorStore()
+    return await store.searchHits(query, 12)
+  }, [])
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -252,6 +379,7 @@ export function LibraryShell() {
               note={selected}
               onRetry={(id) => void handleRetry(id)}
               onClear={() => setSelectedId(null)}
+              onDelete={(id) => void handleDelete(id)}
             />
           ) : (
             <SearchPane
@@ -267,7 +395,7 @@ export function LibraryShell() {
         open={addMode === "file"}
         onOpenChange={(open) => !open && setAddMode(null)}
         busy={busy}
-        onAdd={async ({ path, title }) => {
+        onAdd={async ({ path, title, file }) => {
           const result = await runIngest({
             id: "",
             title,
@@ -275,6 +403,7 @@ export function LibraryShell() {
             sourceLabel: path,
             shaShort: shortSha(path),
             bodyKey: path,
+            file,
           })
           return result === "thin" ? "error" : result
         }}

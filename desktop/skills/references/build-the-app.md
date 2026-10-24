@@ -90,7 +90,7 @@ Playwright and Chrome can ask the author to approve a connection. v1 has no chec
 - **Story Bible.** `notion` read tools may support a proposal. Accept stays in Story Bible and the author UI.
 - **Revision Planner.** No MCP plugins. It reads Critique findings and emits tasks.
 
-First-party tools are concatenated before MCP tools. `user_id` and `project_id` are closed over by those first-party tools. MCP tool arguments come from the model, so an MCP tool must not be the thing that accepts canon or opens `writr.db`.
+First-party tools are concatenated before MCP tools. `user_id` is closed over by those first-party tools. MCP tool arguments come from the model, so an MCP tool must not be the thing that accepts canon or opens `writr.db`.
 
 ## Model
 
@@ -120,8 +120,8 @@ LangSmith tracing is documented and stays off. Turning it on would send the turn
 
 ## Tasks, in order
 
-1. **Sidecar.** A Node process Tauri can start and stop. It owns the agent turn. The WebView sends `{ agent, instruction, target, projectId }` and receives the artifact plus tool failures. It does not import `host.ts`.
-2. **First-party `search_project`.** Hybrid retrieve over this machine's library, closed over `user_id` and `project_id`. Empty result is an empty evidence pack, not invented lore.
+1. **Sidecar.** A Node process Tauri can start and stop. It owns the agent turn. The WebView sends `{ agent, instruction, target }` and receives the artifact plus tool failures. It does not import `host.ts`.
+2. **First-party `search_project`.** Hybrid retrieve over this machine's library, closed over `user_id`. Empty result is an empty evidence pack, not invented lore.
 3. **Chat model.** `ChatOllama` against `127.0.0.1:11434`, using the model the author picked. If the model has no tool calling, block the agent surface with the same kind of setup guidance as a missing Ollama, and name a tool-calling model.
 4. **Write, then Critique.** `createAgent` with the prompt from `AGENT_SYSTEM_PROMPTS`, the skill left beside the prompt (not pasted into it), and `search_project`. Cap `recursionLimit`. No checkpointer.
 5. **Settings for MCP.** List `MCP_PLUGINS`. Save `parseMcpConfig` JSON outside Supabase, in app data. Enable, discover, allowlist. Show `session.failures` as a short status.

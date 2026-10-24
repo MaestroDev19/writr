@@ -22,6 +22,7 @@ from core.config import get_settings
 from core.limiter import limiter
 from router import (
     AgentsRouter,
+    AuthRouter,
     DrainRouter,
     MySettingRouter,
     UploadRouter,
@@ -105,6 +106,9 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",
         "http://localhost:3000",
+        "http://tauri.localhost",
+        "https://tauri.localhost",
+        "tauri://localhost",
         "https://writr-d5j9.vercel.app",
     ],
     allow_credentials=True,
@@ -114,6 +118,7 @@ app.add_middleware(
 # Last = outermost middleware, so the wide event always emits in ``finally``.
 app.add_middleware(WideEventMiddleware)
 
+app.include_router(AuthRouter)
 app.include_router(UploadRouter)
 app.include_router(MySettingRouter)
 app.include_router(AgentsRouter)

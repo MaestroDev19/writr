@@ -1,26 +1,15 @@
-import { supabase } from "@/lib/supabase"
+import { authClient } from "@/lib/auth-client"
 
-const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")
-
-let refreshPromise: Promise<string | null> | null = null
+const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000").replace(/\/$/, "")
 
 async function getAccessToken(): Promise<string | undefined> {
-  const { data, error } = await supabase.auth.getSession()
-  if (error) throw error
-  return data.session?.access_token
+  const token = await authClient.getAccessToken()
+  return token ?? undefined
 }
 
 async function refreshAccessToken(): Promise<string | null> {
-  if (!refreshPromise) {
-    refreshPromise = (async () => {
-      const { data, error } = await supabase.auth.refreshSession()
-      if (error || !data.session?.access_token) return null
-      return data.session.access_token
-    })().finally(() => {
-      refreshPromise = null
-    })
-  }
-  return refreshPromise
+  const refreshed = await authClient.refreshSession()
+  return refreshed?.session?.access_token ?? null
 }
 
 export async function apiFetch(

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, type FormEvent } from "react"
+import { useForm } from "react-hook-form"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import {
@@ -21,6 +21,11 @@ import {
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 
+interface AddPasteFormValues {
+  title: string
+  body: string
+}
+
 export function AddPastePanel({
   open,
   onOpenChange,
@@ -35,20 +40,25 @@ export function AddPastePanel({
     body: string
   }) => Promise<"ok" | "duplicate" | "error">
 }) {
-  const [title, setTitle] = useState("")
-  const [body, setBody] = useState("")
-  const [emptyError, setEmptyError] = useState(false)
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors },
+  } = useForm<AddPasteFormValues>({
+    defaultValues: {
+      title: "",
+      body: "",
+    },
+  })
 
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault()
-    if (!body.trim()) {
-      setEmptyError(true)
-      return
-    }
-    setEmptyError(false)
+  const onSubmit = handleSubmit(async (data) => {
+    const trimmedBody = data.body.trim()
+    if (!trimmedBody) return
+
     const result = await onAdd({
-      title: title.trim() || "Pasted note",
-      body: body.trim(),
+      title: data.title.trim() || "Pasted note",
+      body: trimmedBody,
     })
     if (result === "duplicate") {
       toast.message("Already in library.")
@@ -58,13 +68,18 @@ export function AddPastePanel({
       toast.error("Could not add paste.")
       return
     }
-    setTitle("")
-    setBody("")
+    reset()
     onOpenChange(false)
-  }
+  })
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) reset()
+        onOpenChange(nextOpen)
+      }}
+    >
       <DialogContent className="sm:max-w-[32rem]">
         <DialogHeader>
           <DialogTitle>Paste note</DialogTitle>
@@ -72,34 +87,32 @@ export function AddPastePanel({
             Title is optional. Empty body is blocked.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={(e) => void handleSubmit(e)} className="flex flex-col gap-6">
+        <form onSubmit={onSubmit} className="flex flex-col gap-6">
           <FieldGroup className="gap-4">
             <Field>
               <FieldLabel htmlFor="paste-title">Title</FieldLabel>
               <Input
                 id="paste-title"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
+                {...register("title")}
                 placeholder="Optional"
                 disabled={busy}
               />
             </Field>
-            <Field data-invalid={emptyError || undefined}>
+            <Field data-invalid={errors.body ? true : undefined}>
               <FieldLabel htmlFor="paste-body">Body</FieldLabel>
               <Textarea
                 id="paste-body"
-                value={body}
-                onChange={(e) => {
-                  setBody(e.target.value)
-                  if (emptyError) setEmptyError(false)
-                }}
-                aria-invalid={emptyError || undefined}
+                {...register("body", {
+                  required: "Body is required.",
+                  validate: (val) => val.trim().length > 0 || "Body is required.",
+                })}
+                aria-invalid={errors.body ? true : undefined}
                 rows={8}
                 disabled={busy}
                 placeholder="Paste text here…"
               />
               <FieldDescription>Stored locally on this machine.</FieldDescription>
-              {emptyError ? <FieldError>Body is required.</FieldError> : null}
+              {errors.body?.message ? <FieldError>{errors.body.message}</FieldError> : null}
             </Field>
           </FieldGroup>
           <DialogFooter>

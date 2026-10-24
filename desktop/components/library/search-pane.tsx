@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, type FormEvent } from "react"
+import { useState } from "react"
+import { useForm, useWatch } from "react-hook-form"
 import { Search } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
@@ -15,6 +16,10 @@ import {
 } from "@/components/ui/empty"
 import type { LibraryNote, SearchHit } from "@/types/library"
 
+interface SearchFormValues {
+  query: string
+}
+
 export function SearchPane({
   notes,
   ollamaOk,
@@ -24,14 +29,18 @@ export function SearchPane({
   ollamaOk: boolean
   onSearch: (query: string) => Promise<SearchHit[]>
 }) {
-  const [query, setQuery] = useState("")
   const [hits, setHits] = useState<SearchHit[] | null>(null)
   const [searching, setSearching] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault()
-    const q = query.trim()
+  const { register, handleSubmit, control } = useForm<SearchFormValues>({
+    defaultValues: { query: "" },
+  })
+
+  const watchedQuery = useWatch({ control, name: "query" }) ?? ""
+
+  const onSubmit = handleSubmit(async (data) => {
+    const q = data.query.trim()
     if (!q) return
 
     if (!ollamaOk) {
@@ -57,12 +66,12 @@ export function SearchPane({
     } finally {
       setSearching(false)
     }
-  }
+  })
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       <form
-        onSubmit={(e) => void handleSubmit(e)}
+        onSubmit={onSubmit}
         className="border-b border-border p-5 sm:px-6"
       >
         <FieldGroup className="gap-3">
@@ -72,8 +81,7 @@ export function SearchPane({
             </FieldLabel>
             <Input
               id="library-search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              {...register("query")}
               placeholder="Search local notes…"
               autoComplete="off"
               className="min-w-0 flex-1"
@@ -82,7 +90,7 @@ export function SearchPane({
               type="submit"
               size="sm"
               className="shrink-0"
-              disabled={searching || !query.trim()}
+              disabled={searching || !watchedQuery.trim()}
             >
               {searching ? "Searching…" : "Search"}
             </Button>
