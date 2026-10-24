@@ -8,13 +8,30 @@ export { OLLAMA_BASE_URL }
 
 export { EMBED_MODEL }
 
-export async function pingOllama(): Promise<boolean> {
+export type OllamaPingResult = {
+  ok: boolean
+  status?: number
+  error?: "unreachable" | "cors_blocked" | "unknown"
+}
+
+export async function checkOllama(): Promise<OllamaPingResult> {
   try {
     const res = await fetch(OLLAMA_TAGS, { method: "GET", signal: AbortSignal.timeout(2500) })
-    return res.ok
+    if (res.ok) {
+      return { ok: true, status: res.status }
+    }
+    if (res.status === 403) {
+      return { ok: false, status: 403, error: "cors_blocked" }
+    }
+    return { ok: false, status: res.status, error: "unknown" }
   } catch {
-    return false
+    return { ok: false, error: "unreachable" }
   }
+}
+
+export async function pingOllama(): Promise<boolean> {
+  const result = await checkOllama()
+  return result.ok
 }
 
 export function isEmbedModel(name: string): boolean {

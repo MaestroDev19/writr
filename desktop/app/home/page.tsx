@@ -70,14 +70,7 @@ export default function HomePage() {
                   >
                     Soon
                   </Badge>
-                ) : (
-                  <Badge
-                    variant="secondary"
-                    className="ms-auto rounded-md bg-accent px-2 py-0.5 tracking-normal normal-case text-accent-foreground"
-                  >
-                    Live
-                  </Badge>
-                )}
+                ) : null}
               </div>
               <p className="text-xs leading-relaxed text-muted-foreground">
                 {item.blurb}
@@ -106,9 +99,11 @@ export default function HomePage() {
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-sm font-medium">{item.label}</span>
-                      <Badge className="rounded-md bg-muted px-2 py-0.5 tracking-normal normal-case text-muted-foreground">
-                        {item.status === "soon" ? "Soon" : "Live"}
-                      </Badge>
+                      {item.status === "soon" ? (
+                        <Badge className="rounded-md bg-muted px-2 py-0.5 tracking-normal normal-case text-muted-foreground">
+                          Soon
+                        </Badge>
+                      ) : null}
                     </div>
                     <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
                       {item.blurb}

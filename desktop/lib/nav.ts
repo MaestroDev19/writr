@@ -47,7 +47,7 @@ export const agentNav: NavItem[] = [
     href: "/write",
     icon: Sparkles,
     kind: "agent",
-    status: "soon",
+    status: "live",
     blurb: "Revise a target draft with local note search",
   },
   {
@@ -55,7 +55,7 @@ export const agentNav: NavItem[] = [
     href: "/review",
     icon: MessageSquareQuote,
     kind: "agent",
-    status: "soon",
+    status: "live",
     blurb: "Score and feedback on a target draft",
   },
   {

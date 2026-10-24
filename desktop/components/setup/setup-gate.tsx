@@ -19,6 +19,7 @@ import {
   pullEmbedModel,
   openOllamaInstallDocs,
   pingOllama,
+  checkOllama,
 } from "@/lib/setup"
 import type { SetupStep } from "@/types/library"
 import { cn } from "@/lib/utils"
@@ -67,13 +68,21 @@ export function SetupGate({
     setLiveMessage("Checking Ollama...")
 
     patchStep("ollama", { status: "active", detail: "Pinging 127.0.0.1:11434" })
-    const ollamaOk = await pingOllama()
-    if (!ollamaOk) {
-      patchStep("ollama", {
-        status: "error",
-        detail: "Ollama unreachable",
-      })
-      setLiveMessage("Ollama unreachable. Install it, then retry.")
+    const ollamaCheck = await checkOllama()
+    if (!ollamaCheck.ok) {
+      if (ollamaCheck.error === "cors_blocked") {
+        patchStep("ollama", {
+          status: "error",
+          detail: "CORS blocked. Set OLLAMA_ORIGINS=* and restart Ollama.",
+        })
+        setLiveMessage("Ollama rejected desktop connection (CORS 403). Set OLLAMA_ORIGINS=* and restart Ollama.")
+      } else {
+        patchStep("ollama", {
+          status: "error",
+          detail: "Ollama unreachable",
+        })
+        setLiveMessage("Ollama unreachable. Install it, then retry.")
+      }
       setRunning(false)
       return
     }
