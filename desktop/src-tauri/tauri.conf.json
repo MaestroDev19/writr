@@ -26,7 +26,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["nsis"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -34,8 +34,12 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "android": {
-      "debugApplicationIdSuffix": ".debug"
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": ["English"],
+        "displayLanguageSelector": false
+      }
     }
   }
 }
