@@ -109,12 +109,13 @@ export function AddLinkPanel({
             <Button
               type="button"
               variant="outline"
+              className="rounded-md"
               disabled={busy}
               onClick={() => onOpenChange(false)}
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={busy}>
+            <Button type="submit" className="rounded-md" disabled={busy}>
               Fetch
             </Button>
           </DialogFooter>

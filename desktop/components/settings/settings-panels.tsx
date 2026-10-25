@@ -21,11 +21,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import {
-  CREATIVITY_PRESETS,
-  temperatureFor,
-} from "@/lib/chat-settings"
+import { CREATIVITY_PRESETS, temperatureFor } from "@/lib/chat-settings"
 import { EMBED_MODEL, RECOMMENDED_CHAT_MODEL, openOllamaInstallDocs } from "@/lib/setup"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
 
 const CHAT_TIERS = [
@@ -49,7 +47,8 @@ export function SettingsPanels() {
   const groundedTemperature = temperatureFor("critique", creativity)
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 overflow-auto px-5 py-8 sm:px-8">
+    <ScrollArea className="h-full w-full flex-1">
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-5 py-8 sm:px-8">
       <section className="flex flex-col gap-4 rounded-md border border-border bg-card p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 flex-col gap-1">
@@ -273,6 +272,7 @@ export function SettingsPanels() {
       <ButtonLink href="/home" variant="outline" className="w-fit rounded-md">
         Back to home
       </ButtonLink>
-    </div>
+      </div>
+    </ScrollArea>
   )
 }

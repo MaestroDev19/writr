@@ -4,6 +4,7 @@ import Link from "next/link"
 import { AppShell } from "@/components/app-shell"
 import { Badge } from "@/components/ui/badge"
 import { ButtonLink } from "@/components/ui/button-link"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { agentNav, workspaceNav } from "@/lib/nav"
 import { cn } from "@/lib/utils"
 
@@ -18,7 +19,8 @@ export default function HomePage() {
       title="Home"
       subtitle="Local author workspace - notes in, agents on drafts you attach"
     >
-      <div className="flex min-h-0 flex-1 flex-col gap-10 overflow-auto px-5 py-8 sm:px-8 lg:px-10">
+      <ScrollArea className="h-full w-full flex-1">
+        <div className="flex flex-col gap-10 px-5 py-8 sm:px-8 lg:px-10">
         <section className="flex flex-col gap-4">
           <h2 className="font-heading text-2xl font-semibold tracking-tight sm:text-3xl">
             Pick up the work on this machine
@@ -125,7 +127,8 @@ export default function HomePage() {
             silent target.
           </p>
         </section>
-      </div>
+        </div>
+      </ScrollArea>
     </AppShell>
   )
 }

@@ -114,12 +114,18 @@ export function AddFilePanel({
           <Button
             type="button"
             variant="outline"
+            className="rounded-md"
             disabled={busy}
             onClick={() => onOpenChange(false)}
           >
             Cancel
           </Button>
-          <Button type="button" disabled={busy} onClick={() => void pickFile()}>
+          <Button
+            type="button"
+            className="rounded-md"
+            disabled={busy}
+            onClick={() => void pickFile()}
+          >
             Choose file
           </Button>
         </DialogFooter>

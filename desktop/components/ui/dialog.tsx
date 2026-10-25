@@ -53,7 +53,7 @@ function DialogContent({
       <DialogPrimitive.Popup
         data-slot="dialog-content"
         className={cn(
-          "fixed top-1/2 start-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 rtl:translate-x-1/2 -translate-y-1/2 gap-6 rounded-xl bg-popover p-6 text-sm text-popover-foreground shadow-md ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-[28rem] data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          "fixed top-1/2 start-1/2 z-50 flex flex-col w-full max-w-[calc(100%-2rem)] max-h-[calc(100dvh-2.5rem)] sm:max-h-[min(90dvh,46rem)] -translate-x-1/2 rtl:translate-x-1/2 -translate-y-1/2 gap-5 rounded-xl bg-popover p-6 text-sm text-popover-foreground shadow-lg ring-1 ring-foreground/10 duration-100 outline-none overflow-hidden sm:max-w-[28rem] data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
           className
         )}
         {...props}
@@ -65,13 +65,12 @@ function DialogContent({
             render={
               <Button
                 variant="ghost"
-                className="absolute top-5 end-5 bg-secondary"
+                className="absolute top-4 end-4 size-7 rounded-md p-0 text-muted-foreground hover:bg-muted hover:text-foreground"
                 size="icon-sm"
               />
             }
           >
-            <XIcon
-            />
+            <XIcon className="size-4" />
             <span className="sr-only">Close</span>
           </DialogPrimitive.Close>
         )}
@@ -84,7 +83,7 @@ function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="dialog-header"
-      className={cn("flex flex-col gap-2", className)}
+      className={cn("flex shrink-0 flex-col gap-1.5", className)}
       {...props}
     />
   )
@@ -102,14 +101,14 @@ function DialogFooter({
     <div
       data-slot="dialog-footer"
       className={cn(
-        "flex flex-col-reverse gap-2 sm:flex-row sm:justify-end",
+        "flex shrink-0 flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end pt-2",
         className
       )}
       {...props}
     >
       {children}
       {showCloseButton && (
-        <DialogPrimitive.Close render={<Button variant="outline" />}>
+        <DialogPrimitive.Close render={<Button variant="outline" className="rounded-md" />}>
           Close
         </DialogPrimitive.Close>
       )}

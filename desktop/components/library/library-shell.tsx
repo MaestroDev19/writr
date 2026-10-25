@@ -302,8 +302,8 @@ export function LibraryShell() {
   }, [])
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex flex-wrap items-center gap-2.5 border-b border-border bg-muted/40 px-5 py-3.5 sm:px-6">
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="flex shrink-0 flex-wrap items-center gap-2.5 border-b border-border bg-muted/40 px-5 py-3.5 sm:px-6">
         <span className="font-mono text-[11px] tracking-wide text-muted-foreground uppercase">
           Add notes
         </span>
@@ -361,10 +361,10 @@ export function LibraryShell() {
         </p>
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[minmax(240px,0.4fr)_minmax(0,0.6fr)]">
+      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden md:grid-cols-[minmax(260px,0.4fr)_minmax(0,0.6fr)] md:grid-rows-[minmax(0,1fr)]">
         <section
           aria-label="Notes"
-          className="min-h-56 border-b border-border md:min-h-0 md:border-e md:border-b-0"
+          className="flex h-full min-h-0 flex-col overflow-hidden border-b border-border md:border-b-0 md:border-e"
         >
           <NotesList
             notes={notes}
@@ -373,7 +373,10 @@ export function LibraryShell() {
             onRetry={(id) => void handleRetry(id)}
           />
         </section>
-        <section aria-label="Detail or search" className="min-h-56 md:min-h-0">
+        <section
+          aria-label="Detail or search"
+          className="flex h-full min-h-0 flex-col overflow-hidden"
+        >
           {selected ? (
             <NoteDetail
               note={selected}

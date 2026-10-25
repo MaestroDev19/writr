@@ -3,6 +3,7 @@
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import type { LibraryNote } from "@/types/library"
 
 export function NoteDetail({
@@ -17,7 +18,8 @@ export function NoteDetail({
   onDelete?: (id: string) => void
 }) {
   return (
-    <div className="flex h-full min-h-0 flex-col gap-5 p-6 sm:p-7">
+    <ScrollArea className="h-full w-full flex-1">
+      <div className="flex flex-col gap-5 p-6 sm:p-7">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <h2 className="text-lg font-semibold tracking-tight">{note.title}</h2>
@@ -89,6 +91,7 @@ export function NoteDetail({
           </AlertDescription>
         </Alert>
       ) : null}
-    </div>
+      </div>
+    </ScrollArea>
   )
 }

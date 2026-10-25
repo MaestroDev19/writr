@@ -69,10 +69,10 @@ export function SearchPane({
   })
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
       <form
         onSubmit={onSubmit}
-        className="border-b border-border p-5 sm:px-6"
+        className="shrink-0 border-b border-border p-5 sm:px-6"
       >
         <FieldGroup className="gap-3">
           <Field orientation="horizontal" className="gap-2">
@@ -98,7 +98,7 @@ export function SearchPane({
         </FieldGroup>
       </form>
 
-      <div className="min-h-0 flex-1" role="region" aria-live="polite">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden" role="region" aria-live="polite">
         {hits === null ? (
           <Empty className="min-h-48 border-0 p-6">
             <EmptyHeader>
@@ -126,7 +126,7 @@ export function SearchPane({
             </EmptyHeader>
           </Empty>
         ) : (
-          <ScrollArea className="h-full">
+          <ScrollArea className="h-full w-full">
             <ul className="flex flex-col divide-y divide-border">
               {hits.map((hit) => (
                 <li key={hit.id} className="flex flex-col gap-1.5 px-5 py-4">

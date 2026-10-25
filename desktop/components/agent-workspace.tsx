@@ -521,12 +521,12 @@ export function AgentWorkspace({
   }, [])
 
   return (
-    <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1.15fr)_minmax(280px,0.85fr)]">
+    <div className="grid h-full min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[minmax(0,1.15fr)_minmax(280px,0.85fr)] lg:grid-rows-[minmax(0,1fr)]">
       <section
         aria-label="Target document"
-        className="flex min-h-0 flex-col border-b border-border lg:border-e lg:border-b-0"
+        className="flex h-full min-h-0 flex-col overflow-hidden border-b border-border lg:border-b-0 lg:border-e"
       >
-        <div className="flex flex-wrap items-center gap-2.5 border-b border-border bg-muted/50 px-5 py-3.5">
+        <div className="flex shrink-0 flex-wrap items-center gap-2.5 border-b border-border bg-muted/50 px-5 py-3.5">
           <span className="font-mono text-[11px] tracking-wide text-muted-foreground uppercase">
             Target document
           </span>
@@ -641,8 +641,8 @@ export function AgentWorkspace({
                 </AttachmentActions>
               </Attachment>
 
-              <div className="flex min-h-0 flex-1 flex-col rounded-md border border-border bg-card">
-                <div className="flex items-center justify-between border-b border-border bg-muted/30 px-4 py-2">
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border border-border bg-card">
+                <div className="flex shrink-0 items-center justify-between border-b border-border bg-muted/30 px-4 py-2">
                   <span className="font-mono text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
                     Draft slice preview
                   </span>
@@ -650,8 +650,8 @@ export function AgentWorkspace({
                     Target context for {agentName}
                   </span>
                 </div>
-                <ScrollArea className="h-full min-h-0 flex-1 p-4 sm:p-5">
-                  <div className="max-w-prose whitespace-pre-wrap font-sans text-sm leading-relaxed text-foreground select-text">
+                <ScrollArea className="h-full w-full flex-1">
+                  <div className="max-w-prose whitespace-pre-wrap p-4 font-sans text-sm leading-relaxed text-foreground select-text sm:p-5">
                     {targetDoc.content}
                   </div>
                 </ScrollArea>
@@ -759,9 +759,9 @@ export function AgentWorkspace({
 
       <section
         aria-label={`${agentName} agent`}
-        className="flex min-h-0 flex-col bg-muted/40"
+        className="flex h-full min-h-0 flex-col overflow-hidden bg-muted/40"
       >
-        <div className="flex items-center gap-3 border-b border-border px-5 py-3.5">
+        <div className="flex shrink-0 items-center gap-3 border-b border-border px-5 py-3.5">
           <span className="flex size-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
             <Bot className="size-3.5" aria-hidden />
           </span>
@@ -794,7 +794,7 @@ export function AgentWorkspace({
           </div>
         </div>
 
-        <div className="flex flex-col gap-3 border-b border-border px-5 py-4">
+        <div className="flex shrink-0 flex-col gap-3 border-b border-border px-5 py-4">
           <div className="flex items-center gap-1.5 font-mono text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
             <Wrench className="size-3" aria-hidden />
             Tools
@@ -823,10 +823,9 @@ export function AgentWorkspace({
           </p>
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-4 p-5">
-          <MessageGroup
-            className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-dashed border-border bg-background/70 p-4"
-          >
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden p-5">
+          <ScrollArea className="h-full w-full min-h-0 flex-1 rounded-xl border border-dashed border-border bg-background/70">
+            <MessageGroup className="min-h-full p-4">
             {chatMessages.length === 0 ? (
               hasTarget && targetDoc ? (
                 <div className="flex flex-col gap-3">
@@ -979,10 +978,11 @@ export function AgentWorkspace({
               ))
             )}
           </MessageGroup>
+        </ScrollArea>
 
           {/* Prompt Input — AI Elements pattern (React Hook Form + Input Group + Attachment) */}
           <form
-            className="rounded-xl border border-border bg-card shadow-xs"
+            className="shrink-0 rounded-xl border border-border bg-card shadow-xs"
             onSubmit={onPromptSubmit}
           >
             {hasTarget && targetDoc ? (

@@ -4,6 +4,7 @@ import type { LucideIcon } from "lucide-react"
 import { BookOpen, FileUp } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { ButtonLink } from "@/components/ui/button-link"
+import { ScrollArea } from "@/components/ui/scroll-area"
 
 export function AgentComingSoon({
   title,
@@ -17,7 +18,8 @@ export function AgentComingSoon({
   bullets: string[]
 }) {
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-5 py-10 sm:px-8">
+    <ScrollArea className="h-full w-full flex-1">
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-5 py-10 sm:px-8">
       <div className="flex flex-wrap items-start gap-4">
         <span className="flex size-10 items-center justify-center rounded-md bg-primary text-primary-foreground">
           <Icon className="size-4" aria-hidden />
@@ -60,6 +62,7 @@ export function AgentComingSoon({
           See Write target flow
         </ButtonLink>
       </div>
-    </div>
+      </div>
+    </ScrollArea>
   )
 }

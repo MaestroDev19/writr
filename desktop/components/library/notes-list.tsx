@@ -52,7 +52,7 @@ export function NotesList({
   }
 
   return (
-    <ScrollArea className="h-full min-h-0">
+    <ScrollArea className="h-full w-full">
       <ul className="flex flex-col" role="listbox" aria-label="Notes">
         {notes.map((note) => {
           const selected = note.id === selectedId

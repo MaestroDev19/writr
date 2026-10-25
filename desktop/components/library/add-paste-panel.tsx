@@ -1,7 +1,8 @@
 "use client"
 
-import { useForm } from "react-hook-form"
+import { useForm, useWatch } from "react-hook-form"
 import { toast } from "sonner"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -19,6 +20,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { Spinner } from "@/components/ui/spinner"
 import { Textarea } from "@/components/ui/textarea"
 
 interface AddPasteFormValues {
@@ -44,6 +46,7 @@ export function AddPastePanel({
     register,
     handleSubmit,
     reset,
+    control,
     formState: { errors },
   } = useForm<AddPasteFormValues>({
     defaultValues: {
@@ -51,6 +54,13 @@ export function AddPastePanel({
       body: "",
     },
   })
+
+  const watchedBody = useWatch({ control, name: "body" }) ?? ""
+  const watchedTitle = useWatch({ control, name: "title" }) ?? ""
+  const charCount = watchedBody.length
+  const wordCount = watchedBody.trim()
+    ? (watchedBody.trim().match(/\S+/g)?.length ?? 0)
+    : 0
 
   const onSubmit = handleSubmit(async (data) => {
     const trimmedBody = data.body.trim()
@@ -80,52 +90,110 @@ export function AddPastePanel({
         onOpenChange(nextOpen)
       }}
     >
-      <DialogContent className="sm:max-w-[32rem]">
-        <DialogHeader>
-          <DialogTitle>Paste note</DialogTitle>
+      <DialogContent className="sm:max-w-xl md:max-w-2xl max-h-[calc(100dvh-3rem)] flex flex-col overflow-hidden">
+        <DialogHeader className="shrink-0">
+          <div className="flex flex-wrap items-center justify-between gap-2 pe-8">
+            <DialogTitle className="text-base font-semibold tracking-tight normal-case sm:text-lg">
+              Paste note
+            </DialogTitle>
+            {wordCount > 0 ? (
+              <Badge
+                variant="secondary"
+                className="rounded-md font-mono text-[11px] font-normal tracking-normal normal-case"
+              >
+                {wordCount.toLocaleString()} words · {(charCount / 1024).toFixed(1)} KB
+              </Badge>
+            ) : null}
+          </div>
           <DialogDescription>
-            Title is optional. Empty body is blocked.
+            Paste outline, manuscript slice, or research notes. Stored locally on this machine.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={onSubmit} className="flex flex-col gap-6">
-          <FieldGroup className="gap-4">
-            <Field>
-              <FieldLabel htmlFor="paste-title">Title</FieldLabel>
+
+        <form
+          onSubmit={onSubmit}
+          className="flex min-h-0 flex-1 flex-col overflow-hidden gap-4"
+        >
+          <FieldGroup className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
+            <Field className="shrink-0 gap-1.5">
+              <FieldLabel htmlFor="paste-title" className="text-xs font-medium">
+                Title
+              </FieldLabel>
               <Input
                 id="paste-title"
                 {...register("title")}
-                placeholder="Optional"
+                placeholder="Optional (e.g. Chapter 4 Outline or World Canon)"
                 disabled={busy}
+                className="h-9 rounded-md text-sm"
               />
             </Field>
-            <Field data-invalid={errors.body ? true : undefined}>
-              <FieldLabel htmlFor="paste-body">Body</FieldLabel>
-              <Textarea
-                id="paste-body"
-                {...register("body", {
-                  required: "Body is required.",
-                  validate: (val) => val.trim().length > 0 || "Body is required.",
-                })}
-                aria-invalid={errors.body ? true : undefined}
-                rows={8}
-                disabled={busy}
-                placeholder="Paste text here…"
-              />
-              <FieldDescription>Stored locally on this machine.</FieldDescription>
-              {errors.body?.message ? <FieldError>{errors.body.message}</FieldError> : null}
+
+            <Field
+              data-invalid={errors.body ? true : undefined}
+              className="flex min-h-0 flex-1 flex-col gap-1.5"
+            >
+              <div className="flex items-center justify-between">
+                <FieldLabel htmlFor="paste-body" className="text-xs font-medium">
+                  Content
+                </FieldLabel>
+                {watchedBody.trim() ? (
+                  <button
+                    type="button"
+                    onClick={() => reset({ title: watchedTitle, body: "" })}
+                    className="cursor-pointer text-xs text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    Clear text
+                  </button>
+                ) : null}
+              </div>
+              <div className="relative flex min-h-0 flex-1 flex-col">
+                <Textarea
+                  id="paste-body"
+                  {...register("body", {
+                    required: "Content is required.",
+                    validate: (val) => val.trim().length > 0 || "Content is required.",
+                  })}
+                  aria-invalid={errors.body ? true : undefined}
+                  disabled={busy}
+                  placeholder="Paste text here…"
+                  className="min-h-48 max-h-72 sm:max-h-84 flex-1 resize-none overflow-y-auto rounded-lg font-sans text-sm leading-relaxed p-3.5 focus-visible:ring-1 focus-visible:ring-ring"
+                />
+              </div>
+              {errors.body?.message ? (
+                <FieldError>{errors.body.message}</FieldError>
+              ) : (
+                <FieldDescription className="text-[11px] text-muted-foreground">
+                  Indexed with local embeddings for agent continuity retrieval.
+                </FieldDescription>
+              )}
             </Field>
           </FieldGroup>
-          <DialogFooter>
+
+          <DialogFooter className="shrink-0 border-t border-border/60 pt-3">
             <Button
               type="button"
               variant="outline"
+              size="sm"
+              className="rounded-md"
               disabled={busy}
               onClick={() => onOpenChange(false)}
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={busy}>
-              Add
+            <Button
+              type="submit"
+              size="sm"
+              className="rounded-md"
+              disabled={busy || !watchedBody.trim()}
+            >
+              {busy ? (
+                <>
+                  <Spinner className="size-3.5" data-icon="inline-start" />
+                  Indexing…
+                </>
+              ) : (
+                "Add note"
+              )}
             </Button>
           </DialogFooter>
         </form>
