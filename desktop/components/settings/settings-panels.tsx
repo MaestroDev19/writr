@@ -25,12 +25,13 @@ import {
   CREATIVITY_PRESETS,
   temperatureFor,
 } from "@/lib/chat-settings"
-import { EMBED_MODEL, openOllamaInstallDocs } from "@/lib/setup"
+import { EMBED_MODEL, RECOMMENDED_CHAT_MODEL, openOllamaInstallDocs } from "@/lib/setup"
 import { cn } from "@/lib/utils"
 
 const CHAT_TIERS = [
-  { ram: "8 GB", model: "qwen3.5:2b", note: "Tight machines" },
-  { ram: "16 GB", model: "qwen3.5:4b", note: "Default for most authors" },
+  { ram: "4–8 GB", model: RECOMMENDED_CHAT_MODEL, note: "Lightweight & fast (1.3 GB download)" },
+  { ram: "8–16 GB", model: "qwen3.5:4b", note: "Default for most authors" },
+  { ram: "16 GB+", model: "llama3.2:3b", note: "Balanced writing quality" },
   { ram: "32 GB+", model: "qwen3.5:9b", note: "More headroom" },
 ] as const
 

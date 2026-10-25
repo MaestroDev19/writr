@@ -174,3 +174,37 @@ pub fn read_file_bytes(path: String) -> Result<Vec<u8>, String> {
     std::fs::read(clean_path)
         .map_err(|e| format!("Failed to read file bytes at '{clean_path}': {e}"))
 }
+
+#[tauri::command]
+pub async fn fetch_url(url: String) -> Result<String, String> {
+    let clean_url = url.trim();
+    if clean_url.is_empty() {
+        return Err("URL cannot be empty".into());
+    }
+
+    let client = reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+        .timeout(std::time::Duration::from_secs(20))
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {e}"))?;
+
+    let response = client
+        .get(clean_url)
+        .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+        .send()
+        .await
+        .map_err(|e| format!("Network error while fetching {clean_url}: {e}"))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let reason = status.canonical_reason().unwrap_or("");
+        return Err(format!("Failed to fetch article: HTTP {} {}", status.as_u16(), reason));
+    }
+
+    let text = response
+        .text()
+        .await
+        .map_err(|e| format!("Failed to read response body: {e}"))?;
+
+    Ok(text)
+}

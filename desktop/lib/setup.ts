@@ -53,17 +53,20 @@ export async function listOllamaModels(): Promise<string[] | null> {
   }
 }
 
-/** Downloads nomic-embed-text from the local Ollama server. No API key. */
-export async function pullEmbedModel(
+export const RECOMMENDED_CHAT_MODEL = "llama3.2:1b"
+
+/** Downloads any model from the local Ollama server with progress streaming. */
+export async function pullModel(
+  modelName: string,
   onProgress?: (update: { percent: number; status: string }) => void,
 ): Promise<void> {
   const res = await fetch(`${OLLAMA_BASE_URL}/api/pull`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model: EMBED_MODEL, stream: true }),
+    body: JSON.stringify({ model: modelName, stream: true }),
   })
   if (!res.ok || !res.body) {
-    throw new Error(`Could not pull ${EMBED_MODEL}.`)
+    throw new Error(`Could not pull ${modelName}.`)
   }
   const reader = res.body.getReader()
   const decoder = new TextDecoder()
@@ -92,17 +95,37 @@ export async function pullEmbedModel(
   }
 }
 
-export async function hasEmbedModel(): Promise<boolean> {
+/** Downloads nomic-embed-text from the local Ollama server. No API key. */
+export async function pullEmbedModel(
+  onProgress?: (update: { percent: number; status: string }) => void,
+): Promise<void> {
+  return pullModel(EMBED_MODEL, onProgress)
+}
+
+/** Check if any chat model (non-embedding) is installed. Returns first installed chat model name if found. */
+export async function getInstalledChatModel(): Promise<string | null> {
+  const models = await listOllamaModels()
+  if (!models) return null
+  const chatModel = models.find((name) => !isEmbedModel(name))
+  return chatModel ?? null
+}
+
+export async function hasModel(name: string): Promise<boolean> {
   try {
     const res = await fetch(OLLAMA_TAGS, { method: "GET", signal: AbortSignal.timeout(2500) })
     if (!res.ok) return false
     const data = (await res.json()) as { models?: Array<{ name?: string }> }
+    const norm = name.toLowerCase()
     return (data.models ?? []).some(
-      (m) => m.name === EMBED_MODEL || m.name?.startsWith(`${EMBED_MODEL}:`)
+      (m) => (m.name ?? "").toLowerCase() === norm || (m.name ?? "").toLowerCase().startsWith(`${norm}:`)
     )
   } catch {
     return false
   }
+}
+
+export async function hasEmbedModel(): Promise<boolean> {
+  return hasModel(EMBED_MODEL)
 }
 
 /** Stub until local DB migrate lands — always succeeds in UI-first phase. */
@@ -114,7 +137,13 @@ export async function ensureLocalDatabase(): Promise<{ ok: boolean; error?: stri
 export function initialSetupSteps(): SetupStep[] {
   return [
     { id: "ollama", label: "Ollama", status: "pending" },
-    { id: "model", label: "Model pull", status: "pending", detail: EMBED_MODEL },
+    { id: "embed_model", label: "Embedding model", status: "pending", detail: EMBED_MODEL },
+    {
+      id: "chat_model",
+      label: "Chat LLM",
+      status: "pending",
+      detail: `${RECOMMENDED_CHAT_MODEL} (Recommended)`,
+    },
     { id: "database", label: "Local database", status: "pending" },
   ]
 }

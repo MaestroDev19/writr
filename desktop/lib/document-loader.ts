@@ -179,39 +179,49 @@ export async function extractArticle(
     const timeoutMs = options?.timeoutMs ?? 15_000
     const minChars = options?.minChars ?? 50
 
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
-
-    let response: Response
-    try {
-        response = await fetch(parsedUrl.toString(), {
-            signal: controller.signal,
-            headers: {
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                "User-Agent":
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-                ...options?.headers,
-            },
-        })
-    } catch (err) {
-        if (err instanceof Error && err.name === "AbortError") {
-            throw new Error(`Request timed out after ${timeoutMs}ms while fetching ${url}.`)
+    let html: string
+    if (isTauri()) {
+        try {
+            html = await invoke<string>("fetch_url", { url: parsedUrl.toString() })
+        } catch (err) {
+            throw new Error(`Network error while fetching ${url}: ${err instanceof Error ? err.message : String(err)}`)
         }
-        throw new Error(`Network error while fetching ${url}: ${err instanceof Error ? err.message : String(err)}`)
-    } finally {
-        clearTimeout(timeoutId)
+    } else {
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+
+        let response: Response
+        try {
+            response = await fetch(parsedUrl.toString(), {
+                signal: controller.signal,
+                headers: {
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                    "User-Agent":
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                    ...options?.headers,
+                },
+            })
+        } catch (err) {
+            if (err instanceof Error && err.name === "AbortError") {
+                throw new Error(`Request timed out after ${timeoutMs}ms while fetching ${url}.`)
+            }
+            throw new Error(`Network error while fetching ${url}: ${err instanceof Error ? err.message : String(err)}`)
+        } finally {
+            clearTimeout(timeoutId)
+        }
+
+        if (!response.ok) {
+            throw new Error(`Failed to fetch article: HTTP ${response.status} ${response.statusText}`)
+        }
+
+        const contentType = response.headers.get("content-type") || ""
+        if (contentType && !contentType.includes("text/html") && !contentType.includes("application/xhtml+xml")) {
+            throw new Error(`Unsupported content type "${contentType}". Expected an HTML article.`)
+        }
+
+        html = await response.text()
     }
 
-    if (!response.ok) {
-        throw new Error(`Failed to fetch article: HTTP ${response.status} ${response.statusText}`)
-    }
-
-    const contentType = response.headers.get("content-type") || ""
-    if (contentType && !contentType.includes("text/html") && !contentType.includes("application/xhtml+xml")) {
-        throw new Error(`Unsupported content type "${contentType}". Expected an HTML article.`)
-    }
-
-    const html = await response.text()
     if (!html.trim()) {
         throw new Error("The fetched webpage was empty.")
     }

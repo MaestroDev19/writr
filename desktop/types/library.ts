@@ -37,7 +37,7 @@ export interface SearchHit {
   score?: number
 }
 
-export type SetupStepId = "ollama" | "model" | "database"
+export type SetupStepId = "ollama" | "model" | "embed_model" | "chat_model" | "database"
 
 export type SetupStepStatus = "pending" | "active" | "done" | "error"
 

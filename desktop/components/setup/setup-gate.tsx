@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react"
 import {
   BookOpen,
+  Bot,
   Database,
   HardDrive,
   Sparkles,
@@ -13,14 +14,17 @@ import { Spinner } from "@/components/ui/spinner"
 import { StatusPill } from "@/components/status-pill"
 import {
   EMBED_MODEL,
+  RECOMMENDED_CHAT_MODEL,
   ensureLocalDatabase,
   hasEmbedModel,
+  getInstalledChatModel,
   initialSetupSteps,
   pullEmbedModel,
+  pullModel,
   openOllamaInstallDocs,
-  pingOllama,
   checkOllama,
 } from "@/lib/setup"
+import { readChatSettings, writeChatSettings } from "@/lib/chat-settings"
 import type { SetupStep } from "@/types/library"
 import { cn } from "@/lib/utils"
 
@@ -34,6 +38,8 @@ function stepTone(status: SetupStep["status"]) {
 const stepIcons = {
   ollama: HardDrive,
   model: Sparkles,
+  embed_model: Sparkles,
+  chat_model: Bot,
   database: Database,
 } as const
 
@@ -89,7 +95,7 @@ export function SetupGate({
     patchStep("ollama", { status: "done", detail: "Reachable" })
 
     setLiveMessage(`Checking ${EMBED_MODEL}...`)
-    patchStep("model", {
+    patchStep("embed_model", {
       status: "active",
       detail: `Looking for ${EMBED_MODEL}`,
       progress: 10,
@@ -98,7 +104,7 @@ export function SetupGate({
     if (!modelOk) {
       try {
         await pullEmbedModel(({ percent, status }) => {
-          patchStep("model", {
+          patchStep("embed_model", {
             status: "active",
             detail: status,
             progress: percent,
@@ -106,7 +112,7 @@ export function SetupGate({
           setLiveMessage(`Pulling ${EMBED_MODEL}... ${status}`)
         })
       } catch {
-        patchStep("model", {
+        patchStep("embed_model", {
           status: "error",
           detail: `Model missing - run: ollama pull ${EMBED_MODEL}`,
           progress: undefined,
@@ -116,7 +122,7 @@ export function SetupGate({
         return
       }
       if (!(await hasEmbedModel())) {
-        patchStep("model", {
+        patchStep("embed_model", {
           status: "error",
           detail: `Model missing - run: ollama pull ${EMBED_MODEL}`,
           progress: undefined,
@@ -126,7 +132,59 @@ export function SetupGate({
         return
       }
     }
-    patchStep("model", { status: "done", detail: EMBED_MODEL, progress: 100 })
+    patchStep("embed_model", { status: "done", detail: EMBED_MODEL, progress: 100 })
+
+    setLiveMessage("Checking chat LLM...")
+    patchStep("chat_model", {
+      status: "active",
+      detail: "Checking installed models",
+      progress: 10,
+    })
+    const existingChat = await getInstalledChatModel()
+    if (existingChat) {
+      patchStep("chat_model", {
+        status: "done",
+        detail: `Installed · ${existingChat}`,
+        progress: 100,
+      })
+      const current = readChatSettings()
+      if (!current.model) {
+        writeChatSettings({ ...current, model: existingChat })
+      }
+    } else {
+      setLiveMessage(`Pulling small LLM (${RECOMMENDED_CHAT_MODEL})...`)
+      patchStep("chat_model", {
+        status: "active",
+        detail: `Pulling ${RECOMMENDED_CHAT_MODEL} (Recommended small LLM)`,
+        progress: 0,
+      })
+      try {
+        await pullModel(RECOMMENDED_CHAT_MODEL, ({ percent, status }) => {
+          patchStep("chat_model", {
+            status: "active",
+            detail: status,
+            progress: percent,
+          })
+          setLiveMessage(`Pulling ${RECOMMENDED_CHAT_MODEL}... ${status}`)
+        })
+        patchStep("chat_model", {
+          status: "done",
+          detail: RECOMMENDED_CHAT_MODEL,
+          progress: 100,
+        })
+        const current = readChatSettings()
+        writeChatSettings({ ...current, model: RECOMMENDED_CHAT_MODEL })
+      } catch {
+        patchStep("chat_model", {
+          status: "error",
+          detail: `Model missing - run: ollama pull ${RECOMMENDED_CHAT_MODEL}`,
+          progress: undefined,
+        })
+        setLiveMessage(`Pull ${RECOMMENDED_CHAT_MODEL} in Ollama, then retry.`)
+        setRunning(false)
+        return
+      }
+    }
 
     setLiveMessage("Preparing local database...")
     patchStep("database", { status: "active", detail: "Migrating" })
@@ -223,7 +281,7 @@ export function SetupGate({
               {liveMessage}
             </div>
 
-            <ul className="flex w-full flex-col overflow-hidden rounded-md border border-border bg-card">
+            <ul className="flex w-full flex-col overflow-hidden rounded-lg border border-border bg-card">
               {steps.map((step) => {
                 const Icon = stepIcons[step.id]
                 return (

@@ -34,6 +34,12 @@ pub fn run() {
 
             app.manage(DbState(Mutex::new(conn)));
 
+            if let Some(window) = app.get_webview_window("main") {
+                if let Some(icon) = app.default_window_icon() {
+                    let _ = window.set_icon(icon.clone());
+                }
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -45,6 +51,7 @@ pub fn run() {
             commands::upsert_user_profile,
             commands::read_file_text,
             commands::read_file_bytes,
+            commands::fetch_url,
         ])
         .run(tauri::generate_context!())
         .expect("error while building tauri application");

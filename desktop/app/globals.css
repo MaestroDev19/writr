@@ -60,6 +60,13 @@
   --spacing-gap-xxl: 32px;
 }
 
+@utility no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
 /*
   Writr theme — violet primary (oklch), zero radius, Space Grotesk for heading + body.
 */

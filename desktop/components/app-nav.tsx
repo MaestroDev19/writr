@@ -95,7 +95,7 @@ export function AppNav({
                     key={item.href}
                     href={item.href}
                     className={cn(
-                      "flex min-h-9 items-center gap-1.5 rounded-[var(--radius)] px-3 py-1.5 text-xs font-medium transition-colors select-none focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
+                      "flex min-h-9 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors select-none focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
                       active
                         ? "bg-primary font-semibold text-primary-foreground shadow-xs"
                         : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
@@ -186,7 +186,7 @@ export function AppNav({
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  "flex min-h-9 shrink-0 items-center gap-1.5 rounded-[var(--radius)] px-3 py-1.5 text-xs font-medium",
+                  "flex min-h-9 shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium",
                   active
                     ? "bg-primary font-semibold text-primary-foreground"
                     : "text-muted-foreground hover:bg-accent"
@@ -200,7 +200,7 @@ export function AppNav({
           <Link
             href="/settings"
             className={cn(
-              "flex min-h-9 shrink-0 items-center gap-1.5 rounded-[var(--radius)] px-3 py-1.5 text-xs font-medium",
+              "flex min-h-9 shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium",
               pathname.startsWith("/settings")
                 ? "bg-primary font-semibold text-primary-foreground"
                 : "text-muted-foreground hover:bg-accent"

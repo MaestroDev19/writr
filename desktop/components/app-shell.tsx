@@ -42,11 +42,11 @@ function ShellInner({
   }
 
   return (
-    <SidebarProvider defaultOpen className="min-h-[100dvh]">
+    <SidebarProvider defaultOpen className="h-[100dvh] max-h-[100dvh] overflow-hidden">
       <KeyboardShortcuts />
-      <div className="flex min-h-[100dvh] w-full">
+      <div className="flex h-full w-full overflow-hidden">
         <AppSidebar />
-        <SidebarInset className="flex min-h-[100dvh] min-w-0 flex-1 flex-col overflow-hidden bg-background">
+        <SidebarInset className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
           {title ? (
             <AppTopbar
               title={title}
@@ -58,7 +58,7 @@ function ShellInner({
               onOpenShortcuts={openShortcutsHelp}
             />
           ) : null}
-          <div className="flex min-h-0 flex-1 flex-col">{children}</div>
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{children}</div>
         </SidebarInset>
       </div>
     </SidebarProvider>

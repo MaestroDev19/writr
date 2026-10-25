@@ -57,14 +57,14 @@ export function NotesList({
         {notes.map((note) => {
           const selected = note.id === selectedId
           return (
-            <li key={note.id} className="border-b border-border">
+            <li key={note.id} className="border-b border-border p-1">
               <div
                 role="option"
                 aria-selected={selected}
                 tabIndex={0}
                 className={cn(
-                  "flex min-h-12 cursor-pointer items-center gap-3 px-4 py-3 outline-none transition-colors focus-visible:bg-muted/80 focus-visible:ring-2 focus-visible:ring-ring/30",
-                  selected ? "bg-muted" : "hover:bg-muted/50"
+                  "flex min-h-12 cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 outline-none transition-colors focus-visible:bg-muted/80 focus-visible:ring-2 focus-visible:ring-ring/30",
+                  selected ? "bg-muted" : "hover:bg-muted/60"
                 )}
                 onClick={() => onSelect(note.id)}
                 onKeyDown={(e) => {

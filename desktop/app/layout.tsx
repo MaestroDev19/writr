@@ -27,12 +27,12 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       dir="ltr"
       suppressHydrationWarning
       className={cn(
-        "h-full antialiased font-sans",
+        "h-full overflow-hidden antialiased font-sans",
         spaceGrotesk.variable,
         jetbrainsMono.variable
       )}
     >
-      <body className="flex min-h-full flex-col bg-background text-foreground">
+      <body className="flex h-full max-h-full flex-col overflow-hidden bg-background text-foreground">
         <Providers>{children}</Providers>
       </body>
     </html>
