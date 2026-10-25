@@ -27,7 +27,7 @@ function getApiBaseUrl(): string {
   if (typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_URL) {
     return process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, "")
   }
-  return "http://127.0.0.1:8000"
+  return "https://writr-green.vercel.app"
 }
 
 type AuthListener = (state: AuthState) => void
