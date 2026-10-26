@@ -53,7 +53,7 @@ import {
 } from "@/components/ui/message"
 import { Textarea } from "@/components/ui/textarea"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Spinner } from "@/components/ui/spinner"
+import { Spinner, LoadingIndicator } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
 import {
   fileHandler,
@@ -591,11 +591,17 @@ export function AgentWorkspace({
 
         <div className="flex min-h-0 flex-1 flex-col">
           {loading ? (
-            <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-8">
-              <Spinner className="size-8 text-primary" />
-              <p className="text-sm font-medium text-foreground">
-                Reading and parsing target document…
-              </p>
+            <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 p-8 text-center">
+              <LoadingIndicator
+                messages={[
+                  "Reading and parsing target document…",
+                  "Extracting chapter text & formatting…",
+                  "Indexing document structure…",
+                  "Preparing agent workspace…",
+                ]}
+                variant="dots"
+                className="text-sm font-medium text-foreground"
+              />
               <p className="text-xs text-muted-foreground">
                 Supported formats: {TARGET_FILE_TYPES_LABEL}
               </p>
@@ -951,11 +957,17 @@ export function AgentWorkspace({
                         {/* 4. Response Content with MarkdownCleaner */}
                         {msg.status === "pending" ? (
                           <Bubble variant="muted" className="w-full rounded-2xl">
-                            <BubbleContent className="rounded-2xl leading-relaxed">
-                              <span className="flex items-center gap-2 text-xs text-muted-foreground">
-                                <Spinner className="size-3.5 text-primary" />
-                                Synthesizing {agentName.toLowerCase()} output with continuity…
-                              </span>
+                            <BubbleContent className="rounded-2xl leading-relaxed py-2">
+                              <LoadingIndicator
+                                messages={[
+                                  `Synthesizing ${agentName.toLowerCase()} output…`,
+                                  "Checking lore & character consistency…",
+                                  "Consulting library research notes…",
+                                  "Polishing creative draft recommendations…",
+                                ]}
+                                variant="dots"
+                                className="text-xs"
+                              />
                             </BubbleContent>
                           </Bubble>
                         ) : msg.status === "error" ? (

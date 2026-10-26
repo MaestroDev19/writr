@@ -23,12 +23,11 @@ export interface AuthState {
 
 const STORAGE_KEY = "writr.auth.session"
 
-function getApiBaseUrl(): string {
-  if (typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_URL) {
-    return process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, "")
-  }
-  return "https://writr-green.vercel.app"
-}
+export const API_BASE_URL = (
+  typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_URL
+    ? process.env.NEXT_PUBLIC_API_URL
+    : "https://writr-green.vercel.app"
+).replace(/\/$/, "")
 
 type AuthListener = (state: AuthState) => void
 
@@ -85,11 +84,10 @@ class AuthClient {
   private async mirrorProfileToSqlite(profile: UserProfile | null): Promise<void> {
     if (!profile?.id) return
     try {
-      await invoke("upsert_profile", {
+      await invoke("upsert_user_profile", {
         id: profile.id,
         authorName: profile.author_name || "Author",
         avatarUrl: profile.avatar_url || null,
-        updatedAt: profile.updated_at || new Date().toISOString(),
       })
     } catch {
       // In web browser or before SQLite is ready, ignore mirror error
@@ -155,7 +153,7 @@ class AuthClient {
 
   public async signIn(credentials: LoginFormValues): Promise<{ error?: string }> {
     try {
-      const res = await fetch(`${getApiBaseUrl()}/auth/login`, {
+      const res = await fetch(`${API_BASE_URL}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -197,7 +195,7 @@ class AuthClient {
     error?: string
   }> {
     try {
-      const res = await fetch(`${getApiBaseUrl()}/auth/signup`, {
+      const res = await fetch(`${API_BASE_URL}/auth/signup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -250,7 +248,7 @@ class AuthClient {
       }
 
       try {
-        const res = await fetch(`${getApiBaseUrl()}/auth/refresh`, {
+        const res = await fetch(`${API_BASE_URL}/auth/refresh`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ refresh_token: refreshToken }),
@@ -285,7 +283,7 @@ class AuthClient {
     if (!token) return null
 
     try {
-      const res = await fetch(`${getApiBaseUrl()}/auth/me`, {
+      const res = await fetch(`${API_BASE_URL}/auth/me`, {
         headers: { Authorization: `Bearer ${token}` },
       })
       if (!res.ok) return null
@@ -311,7 +309,7 @@ class AuthClient {
     if (!token) return { error: "Not authenticated" }
 
     try {
-      const res = await fetch(`${getApiBaseUrl()}/auth/profile`, {
+      const res = await fetch(`${API_BASE_URL}/auth/profile`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -349,7 +347,7 @@ class AuthClient {
     email: string
   ): Promise<{ error?: string; success: boolean }> {
     try {
-      const res = await fetch(`${getApiBaseUrl()}/auth/forgot-password`, {
+      const res = await fetch(`${API_BASE_URL}/auth/forgot-password`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
@@ -371,7 +369,7 @@ class AuthClient {
     const token = this.state.session?.access_token
     if (token) {
       try {
-        await fetch(`${getApiBaseUrl()}/auth/logout`, {
+        await fetch(`${API_BASE_URL}/auth/logout`, {
           method: "POST",
           headers: { Authorization: `Bearer ${token}` },
         })

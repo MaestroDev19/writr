@@ -40,3 +40,11 @@ yarn-error.log*
 *.tsbuildinfo
 .env
 next-env.d.ts
+
+# binaries & backups
+*.exe
+*.bak
+
+# tauri
+src-tauri/target/
+src-tauri/gen/

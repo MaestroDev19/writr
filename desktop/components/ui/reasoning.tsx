@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Sparkles, Brain, CheckCircle2, ChevronRight } from "lucide-react"
+import { Brain } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
   Trace,
@@ -13,7 +13,7 @@ import {
   TraceLine,
   TraceTitle,
 } from "@/components/ui/trace"
-import { Spinner } from "@/components/ui/spinner"
+import { Spinner, LoadingText } from "@/components/ui/spinner"
 
 interface ReasoningProps {
   /** The model's chain-of-thought or reasoning text */
@@ -37,33 +37,38 @@ export function Reasoning({
   defaultOpen,
   className,
 }: ReasoningProps) {
-  const [open, setOpen] = React.useState<boolean>(defaultOpen ?? isRunning)
-
-  // Keep open while running, auto-collapse or keep state when finished
-  React.useEffect(() => {
-    if (isRunning) {
-      setOpen(true)
-    }
-  }, [isRunning])
+  const [userOpen, setUserOpen] = React.useState<boolean | undefined>(defaultOpen)
+  const open = isRunning ? true : (userOpen ?? false)
 
   if (!reasoning && !isRunning) return null
 
-  const displayTitle = title ?? (isRunning ? "Reasoning through prompt…" : "Reasoning process")
-
   return (
     <Trace className={cn("w-full py-1", className)}>
-      <TraceCollapsible open={open} onOpenChange={setOpen}>
+      <TraceCollapsible open={open} onOpenChange={setUserOpen}>
         <TraceCollapsibleTrigger className="rounded-lg bg-muted/40 px-2.5 py-1.5 transition-colors hover:bg-muted/70">
           <TraceLine status={isRunning ? "running" : undefined}>
             <TraceIcon>
               {isRunning ? (
-                <Spinner className="size-3.5 text-primary" />
+                <Spinner variant="pulse" className="size-3.5" />
               ) : (
                 <Brain className="size-3.5 text-primary/80" />
               )}
             </TraceIcon>
             <TraceTitle className="text-xs font-medium text-foreground/90">
-              {displayTitle}
+              {title ? (
+                title
+              ) : isRunning ? (
+                <LoadingText
+                  messages={[
+                    "Reasoning through draft…",
+                    "Evaluating continuity & context…",
+                    "Formulating critique & revisions…",
+                  ]}
+                  showDots={false}
+                />
+              ) : (
+                "Reasoning process"
+              )}
             </TraceTitle>
             {description ? (
               <TraceDescription className="text-[11px]">

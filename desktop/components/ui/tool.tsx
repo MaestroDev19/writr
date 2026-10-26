@@ -1,10 +1,10 @@
 "use client"
 
 import * as React from "react"
-import { Wrench, CheckCircle2, AlertCircle, ChevronRight } from "lucide-react"
+import { Wrench, AlertCircle, ChevronRight } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
-import { Spinner } from "@/components/ui/spinner"
+import { Spinner, TypingDots } from "@/components/ui/spinner"
 import {
   Collapsible,
   CollapsibleContent,
@@ -34,7 +34,7 @@ export function Tool({ tool, defaultOpen = false, className }: ToolProps) {
       <Collapsible open={open} onOpenChange={setOpen}>
         <CollapsibleTrigger className="group/tool flex items-center gap-2 rounded-lg border border-border/60 bg-muted/30 px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground">
           {isRunning ? (
-            <Spinner className="size-3 text-primary" />
+            <Spinner variant="pulse" className="size-3" />
           ) : isError ? (
             <AlertCircle className="size-3 text-destructive" />
           ) : (
@@ -47,7 +47,16 @@ export function Tool({ tool, defaultOpen = false, className }: ToolProps) {
             variant={isRunning ? "secondary" : isError ? "destructive" : "outline"}
             className="rounded-md px-1.5 py-0 font-mono text-[10px] font-normal"
           >
-            {isRunning ? "calling" : isError ? "failed" : "completed"}
+            {isRunning ? (
+              <span className="inline-flex items-center gap-1">
+                calling
+                <TypingDots size="xs" />
+              </span>
+            ) : isError ? (
+              "failed"
+            ) : (
+              "completed"
+            )}
           </Badge>
           <ChevronRight className="ml-auto size-3 transition-transform duration-200 group-aria-expanded/tool:rotate-90" />
         </CollapsibleTrigger>

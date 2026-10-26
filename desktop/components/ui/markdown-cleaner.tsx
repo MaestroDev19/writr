@@ -1,10 +1,9 @@
 "use client"
 
 import * as React from "react"
-import { Copy, Check, FileText, Sparkles, BookOpen } from "lucide-react"
+import { Copy, Check, FileText, Sparkles } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { stripMarkdown } from "@/lib/markdown-cleaner"
 import { toast } from "sonner"
 

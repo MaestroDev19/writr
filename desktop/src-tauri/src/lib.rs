@@ -1,11 +1,20 @@
-use rusqlite::Connection;
-use std::sync::Mutex;
+use r2d2::Pool;
+use r2d2_sqlite::SqliteConnectionManager;
+use rusqlite::OpenFlags;
 use tauri::Manager;
 
 pub mod commands;
 pub mod db;
 
-pub struct DbState(pub Mutex<Connection>);
+pub type DbPool = Pool<SqliteConnectionManager>;
+
+pub struct DbState(pub DbPool);
+
+impl DbState {
+    pub fn get(&self) -> Result<r2d2::PooledConnection<SqliteConnectionManager>, String> {
+        self.0.get().map_err(|e| format!("Failed to acquire connection from pool: {e}"))
+    }
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -29,10 +38,40 @@ pub fn run() {
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
 
             let db_path = app_dir.join("writr.db");
-            let conn = db::init_db(&db_path)
+
+            // 1. Register vector extensions once globally for all connections in process
+            db::register_extensions();
+
+            // 2. Initialize schema & ensure WAL mode using single connection first
+            db::init_db(&db_path)
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
 
-            app.manage(DbState(Mutex::new(conn)));
+            // 3. Build r2d2 connection pool for parallel WAL reads
+            let manager = SqliteConnectionManager::file(&db_path)
+                .with_flags(
+                    OpenFlags::SQLITE_OPEN_READ_WRITE
+                        | OpenFlags::SQLITE_OPEN_CREATE
+                        | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+                )
+                .with_init(|conn| {
+                    conn.execute_batch("
+                        PRAGMA foreign_keys = ON;
+                        PRAGMA journal_mode = WAL;
+                        PRAGMA synchronous = NORMAL;
+                        PRAGMA busy_timeout = 5000;
+                        PRAGMA cache_size = -64000;
+                        PRAGMA temp_store = MEMORY;
+                        PRAGMA mmap_size = 268435456;
+                    ")
+                });
+
+            let pool = Pool::builder()
+                .max_size(8)
+                .min_idle(Some(2))
+                .build(manager)
+                .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+
+            app.manage(DbState(pool));
 
             if let Some(window) = app.get_webview_window("main") {
                 if let Some(icon) = app.default_window_icon() {

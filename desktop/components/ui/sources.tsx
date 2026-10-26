@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { BookOpen, ChevronRight, FileText, ExternalLink } from "lucide-react"
+import { BookOpen, ChevronRight, FileText } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import {

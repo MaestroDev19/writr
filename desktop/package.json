@@ -27,7 +27,6 @@
     "cheerio": "^1.2.0",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.4.0",
-    "hono": "^4.13.13",
     "langchain": "^1.5.16",
     "lucide-react": "^1.57.0",
     "mammoth": "^1.13.0",

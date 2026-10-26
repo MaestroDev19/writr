@@ -290,7 +290,7 @@ pub fn insert_reference_chunks_batch(
     {
         let mut stmt = tx.prepare_cached(
             "INSERT INTO reference_chunks (document_id, owner_id, chunk_index, content, embedding, metadata)
-             VALUES (?1, ?2, ?3, ?4, ?5, COALESCE(?6, '{}'))",
+             VALUES (?1, COALESCE(?2, (SELECT owner_id FROM reference_documents WHERE id = ?1)), ?3, ?4, ?5, COALESCE(?6, '{}'))",
         )?;
 
         for chunk in chunks {
@@ -359,6 +359,57 @@ pub fn hybrid_search(
     }
 
     let sanitized_text = sanitize_fts_query(query_text);
+
+    if sanitized_text.is_empty() {
+        let mut stmt = conn.prepare_cached(
+            "SELECT
+                c.id,
+                c.document_id,
+                d.name,
+                c.owner_id,
+                c.chunk_index,
+                c.content,
+                c.metadata,
+                (1.0 / (?4 + v.rank_ix)) AS score
+            FROM (
+                SELECT
+                    v.id,
+                    ROW_NUMBER() OVER (ORDER BY v.distance ASC) AS rank_ix
+                FROM reference_chunks_vec v
+                WHERE v.embedding MATCH ?1
+                  AND v.owner_id = ?2
+                  AND v.k = ?3
+            ) v
+            JOIN reference_chunks c ON c.id = v.id
+            JOIN reference_documents d ON d.id = c.document_id
+            WHERE c.owner_id = ?2
+            ORDER BY score DESC
+            LIMIT ?3;"
+        )?;
+
+        let rows = stmt.query_map(
+            rusqlite::params![
+                query_embedding,
+                clean_owner_id,
+                limit as i64,
+                rrf_k as f64,
+            ],
+            |row| {
+                Ok(HybridSearchResult {
+                    id: row.get(0)?,
+                    document_id: row.get(1)?,
+                    document_name: row.get(2)?,
+                    owner_id: row.get(3)?,
+                    chunk_index: row.get(4)?,
+                    content: row.get(5)?,
+                    metadata: row.get(6)?,
+                    score: row.get(7)?,
+                })
+            },
+        )?;
+
+        return rows.collect();
+    }
 
     let mut stmt = conn.prepare_cached(
         "WITH params AS (
@@ -635,6 +686,30 @@ mod tests {
         assert_eq!(results[0].document_name, "The Time Machine");
         assert_eq!(results[0].owner_id, "usr-1");
         assert!(results[0].score > 0.0);
+
+        // 3. Pure vector search with empty query string
+        let empty_text_results = hybrid_search(
+            &conn,
+            "",
+            &vec2_bytes,
+            5,
+            "usr-1",
+            50,
+        ).unwrap();
+        assert!(!empty_text_results.is_empty(), "Pure vector search should return results when text is empty");
+        assert_eq!(empty_text_results[0].chunk_index, 1);
+
+        // 4. Pure vector search with symbols only (sanitizes to empty string)
+        let symbols_text_results = hybrid_search(
+            &conn,
+            "?!@#$%",
+            &vec2_bytes,
+            5,
+            "usr-1",
+            50,
+        ).unwrap();
+        assert!(!symbols_text_results.is_empty(), "Vector search should succeed when query has only symbols");
+        assert_eq!(symbols_text_results[0].chunk_index, 1);
     }
 
     #[test]

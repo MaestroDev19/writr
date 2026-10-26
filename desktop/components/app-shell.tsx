@@ -9,7 +9,7 @@ import {
   KeyboardShortcuts,
   openShortcutsHelp,
 } from "@/components/keyboard-shortcuts"
-import { Spinner } from "@/components/ui/spinner"
+import { Spinner, LoadingText } from "@/components/ui/spinner"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { useChatSettings } from "@/components/chat-settings-provider"
 import { isSetupReady } from "@/lib/setup-state"
@@ -35,8 +35,16 @@ function ShellInner({
 
   if (!ready) {
     return (
-      <div className="flex min-h-[100dvh] items-center justify-center bg-background">
-        <Spinner className="size-6" />
+      <div className="flex min-h-[100dvh] flex-col items-center justify-center gap-3 bg-background">
+        <Spinner className="size-6 text-primary" />
+        <LoadingText
+          messages={[
+            "Loading workspace…",
+            "Checking local database…",
+            "Preparing creative canvas…",
+          ]}
+          className="text-xs text-muted-foreground"
+        />
       </div>
     )
   }

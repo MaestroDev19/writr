@@ -1,7 +1,5 @@
 /** Thin wrappers so UI works in browser preview and Tauri. */
 
-const OLLAMA_INSTALL_URL = "https://ollama.com/download"
-
 export function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window
 }
@@ -17,10 +15,6 @@ export async function openExternal(url: string): Promise<void> {
     }
   }
   window.open(url, "_blank", "noopener,noreferrer")
-}
-
-export async function openOllamaInstall(): Promise<void> {
-  await openExternal(OLLAMA_INSTALL_URL)
 }
 
 const ALLOWED_EXTENSIONS = [".docx", ".txt", ".md"] as const
@@ -82,42 +76,4 @@ function pickViaHtmlInput(): Promise<PickedFile | null> {
     }
     input.click()
   })
-}
-
-export function isUnsupportedLibraryFile(name: string): boolean {
-  const lower = name.toLowerCase()
-  if (lower.endsWith(".pdf")) return true
-  return !ALLOWED_EXTENSIONS.some((ext) => lower.endsWith(ext))
-}
-
-export async function pingOllama(): Promise<boolean> {
-  try {
-    const res = await fetch("http://127.0.0.1:11434/api/tags", {
-      method: "GET",
-      signal: AbortSignal.timeout(2500),
-    })
-    return res.ok
-  } catch {
-    return false
-  }
-}
-
-export async function hasEmbedModel(
-  model = "nomic-embed-text"
-): Promise<boolean> {
-  try {
-    const res = await fetch("http://127.0.0.1:11434/api/tags", {
-      method: "GET",
-      signal: AbortSignal.timeout(2500),
-    })
-    if (!res.ok) return false
-    const data = (await res.json()) as {
-      models?: Array<{ name?: string }>
-    }
-    return (data.models ?? []).some((m) =>
-      (m.name ?? "").toLowerCase().includes(model.toLowerCase())
-    )
-  } catch {
-    return false
-  }
 }

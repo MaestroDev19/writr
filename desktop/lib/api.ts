@@ -1,8 +1,4 @@
-import { authClient } from "@/lib/auth-client"
-
-const API_BASE_URL = (
-  process.env.NEXT_PUBLIC_API_URL || "https://writr-green.vercel.app"
-).replace(/\/$/, "")
+import { authClient, API_BASE_URL } from "@/lib/auth-client"
 
 async function getAccessToken(): Promise<string | undefined> {
   const token = await authClient.getAccessToken()

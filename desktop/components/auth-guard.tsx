@@ -3,16 +3,21 @@
 import { useEffect, type ReactNode } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { useAuth } from "@/components/auth-provider"
-import { Spinner } from "@/components/ui/spinner"
+import { Spinner, LoadingText } from "@/components/ui/spinner"
 
 function LoadingScreen() {
   return (
     <div className="flex min-h-[100dvh] items-center justify-center bg-background p-6">
       <div className="flex flex-col items-center gap-3">
         <Spinner className="size-6 text-primary" />
-        <span className="text-xs font-medium text-muted-foreground">
-          Loading Writr...
-        </span>
+        <LoadingText
+          messages={[
+            "Checking authorization…",
+            "Loading Writr workspace…",
+            "Syncing account state…",
+          ]}
+          className="text-xs text-muted-foreground"
+        />
       </div>
     </div>
   )

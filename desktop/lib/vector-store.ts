@@ -3,7 +3,7 @@ import { fileHandler, acceptText, extractArticle, readDocumentFromPath } from ".
 import { isTauri } from "./tauri"
 import { chunkDocument, type ChunkOptions } from "./chunking"
 import { invoke } from "@tauri-apps/api/core"
-import { getUserProfile, getCurrentUserId, supabase } from "./supabase"
+import { getUserProfile, getCurrentUserId } from "./supabase"
 import type { IngestProgressState, SearchHit } from "@/types/library"
 import { Document } from "@langchain/core/documents"
 

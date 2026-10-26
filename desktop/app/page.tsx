@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { RequireAuth } from "@/components/auth-guard"
 import { useAuth } from "@/components/auth-provider"
 import { SetupGate } from "@/components/setup/setup-gate"
-import { Spinner } from "@/components/ui/spinner"
+import { Spinner, LoadingText } from "@/components/ui/spinner"
 import { isSetupReady, markSetupReady } from "@/lib/setup-state"
 
 function HomeContent() {
@@ -23,8 +23,15 @@ function HomeContent() {
 
   if (checking) {
     return (
-      <div className="flex min-h-[100dvh] items-center justify-center bg-background">
-        <Spinner className="size-6" />
+      <div className="flex min-h-[100dvh] flex-col items-center justify-center gap-3 bg-background">
+        <Spinner className="size-6 text-primary" />
+        <LoadingText
+          messages={[
+            "Checking setup state…",
+            "Initializing Writr environment…",
+          ]}
+          className="text-xs text-muted-foreground"
+        />
       </div>
     )
   }

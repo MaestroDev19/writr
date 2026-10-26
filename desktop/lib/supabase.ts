@@ -5,7 +5,6 @@ import {
   getCachedUserProfile,
   getUserProfile,
 } from "./auth-client"
-import type { UserProfile } from "@/types/auth"
 
 export { getCurrentUserId, getCachedUserProfile, getUserProfile }
 

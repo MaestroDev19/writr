@@ -71,7 +71,7 @@ export const agentNav: NavItem[] = [
     href: "/analyse",
     icon: Microscope,
     kind: "agent",
-    status: "soon",
+    status: "live",
     blurb: "Findings by category with evidence drill-down",
   },
   {
